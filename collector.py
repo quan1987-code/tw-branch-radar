@@ -63,7 +63,7 @@ def report_api_limit(dl: DataLoader) -> dict:
     """印出並回傳實際每小時請求上限（用以確認 Sponsor 層級數字）。"""
     used = limit = None
     try:
-        used = dl.api_usage()          # method → 已用次數
+        used = dl.api_usage             # property（非方法）→ 本小時已用次數
     except Exception as exc:            # noqa: BLE001 - 僅為容錯記錄
         print(f"[api] 取得已用次數失敗：{exc}")
     try:
