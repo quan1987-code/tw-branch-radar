@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """collector.py — tw-branch-radar 台股分點雷達 資料抓取器
 
-Phase 1（最小垂直切片）：用單一 dataset ``TaiwanStockTradingDailyReport``
-（非彙總分點日報表，以 (securities_trader_id, date) 查詢）抓數個分點近幾個交易日的
-逐筆買賣，落地 SQLite，逐筆精算各分點對個股單日「淨買超金額」後輸出一個 JSON。
+用 ``TaiwanStockTradingDailyReport``（非彙總分點日報表，以 (securities_trader_id, date)
+查詢）抓分點對個股的逐筆買賣，落地 SQLite，逐筆精算「淨買超金額」後輸出彙總 JSON。
+Phase 2：以 ``TaiwanStockTradingDate`` 交易日曆取最近 120 交易日、對 branches×交易日
+增量回補（每次執行至多 MAX_REQ_PER_RUN 對，達上限下次續跑）。
 
 註：整日物件（use_object）需 Sponsor Pro、SecIdAgg 需股+分點兩者，皆不合用；
 非彙總報表以分點+日期查詢在 Sponsor 可用，且可逐筆精算 Σ(buy×price)−Σ(sell×price)
@@ -36,13 +37,13 @@ EVENT_MIN_AMOUNT = 5_000_000  # 單日淨買超金額門檻（新台幣）
 HOLD_DAYS = 5                 # 事件後持有交易日數
 MIN_EVENTS = 10               # 列入排行的最少事件數
 
-# --- Phase 1 專用（非彙總分點日報表 TaiwanStockTradingDailyReport；逐筆精算） ---
-# 實跑證實：整日物件 use_object 需 Sponsor Pro；SecIdAgg 需股+分點兩者。故改用非彙總報表以
+# --- 抓取設定（非彙總分點日報表 TaiwanStockTradingDailyReport；逐筆精算） ---
+# 實跑證實：整日物件 use_object 需 Sponsor Pro；SecIdAgg 需股+分點兩者。故用非彙總報表以
 # (securities_trader_id, date) 查詢（回該分點當日各股逐筆買賣，Sponsor 可用），逐筆精算。
 # "1020" 為 FinMind 官方測試 (tests/data/test_data_loader.py) 使用之真實分點代碼。
-PHASE1_BRANCHES = ["1020"]    # Phase 1 取樣分點（securities_trader_id）；可 --branches 覆寫
-PHASE1_DAYS = 3               # 抓最近幾個交易日
-WINDOW_CAL_DAYS = 15          # 往回找交易日的日曆天窗（需含 ≥ PHASE1_DAYS 個交易日）
+DEFAULT_BRANCHES = ["1020"]   # 預設分點宇宙（securities_trader_id）；可 --branches 覆寫
+BACKFILL_CAL_SPAN = 200       # 取交易日曆往回查的日曆天數（需含 ≥ LOOKBACK_DAYS 個交易日）
+MAX_REQ_PER_RUN = int(os.environ.get("MAX_REQ_PER_RUN", "2000"))  # 每次抓取上限（達上限下次續跑）
 TOP_N = 50                    # 輸出前 N 筆淨買超
 REQ_TIMEOUT = 120             # 單次查詢逾時（秒）
 
@@ -55,7 +56,7 @@ EXPECTED_COLS = {
 
 DB_PATH = os.environ.get("BRANCH_DB", os.path.join(".cache", "branch.db"))
 DATA_DIR = os.environ.get("DATA_DIR", "data")
-OUTPUT_JSON = os.path.join(DATA_DIR, "phase1_sample.json")
+OUTPUT_JSON = os.path.join(DATA_DIR, "status.json")
 
 
 # ============ FinMind ============
@@ -110,14 +111,18 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def weekday_window(anchor: date, cal_days: int) -> list[str]:
-    """anchor 往回 cal_days 內的所有平日（含 anchor），升冪 ISO 字串。"""
-    days = [
-        (anchor - timedelta(days=i)).isoformat()
-        for i in range(cal_days)
-        if (anchor - timedelta(days=i)).weekday() < 5  # 排除週末
-    ]
-    return sorted(days)
+def get_trading_days(dl: DataLoader, anchor: date, n: int) -> list[str]:
+    """用 TaiwanStockTradingDate 交易日曆取 anchor 往回最近 n 個交易日（升冪 ISO 字串）。"""
+    start = (anchor - timedelta(days=BACKFILL_CAL_SPAN)).isoformat()
+    end = anchor.isoformat()
+    df = dl.taiwan_stock_trading_date(start_date=start, end_date=end, timeout=REQ_TIMEOUT)
+    if df is None or not len(df):
+        raise SystemExit("取得交易日曆失敗（TaiwanStockTradingDate 回空）。")
+    days = sorted({str(d)[:10] for d in df["date"].tolist() if str(d)[:10] <= end})
+    if len(days) < n:
+        raise SystemExit(
+            f"交易日曆僅回 {len(days)} 個交易日 < 目標 {n}；請調大 BACKFILL_CAL_SPAN。")
+    return days[-n:]
 
 
 def store_branch_day(conn: sqlite3.Connection, trader_id: str, day: str, df) -> int:
@@ -171,58 +176,57 @@ def fetch_branch_day(dl: DataLoader, trader_id: str, day: str):
             "若訊息提及 user level 代表需更高層級；其他參數錯誤請回報以便修正。")
 
 
-def collect(dl: DataLoader, conn: sqlite3.Connection,
-            branches: list[str], anchor: date, n_days: int) -> list[str]:
-    """以 branches[0] 逐日往回偵測交易日並抓取，湊滿 n_days 個交易日；再對其餘分點補抓
-    這些交易日。已涵蓋 (分點,日) 直接跳過（增量零重抓）。回傳交易日（升冪）。
+def backfill(dl: DataLoader, conn: sqlite3.Connection,
+             branches: list[str], trading_days: list[str]) -> dict:
+    """對 branches × trading_days 補齊缺的 (分點,日)；每次執行至多抓 MAX_REQ_PER_RUN 對，
+    達上限即停（下次續跑）。已涵蓋者跳過（增量零重抓）。回傳進度/涵蓋統計。
     """
-    window_desc = sorted(weekday_window(anchor, WINDOW_CAL_DAYS), reverse=True)  # 新到舊
-    probe = branches[0]
-    probe_checked = {r[0] for r in conn.execute(
-        "SELECT date FROM fetched_keys WHERE securities_trader_id = ?", (probe,))}
-    probe_has_rows = {r[0] for r in conn.execute(
-        "SELECT DISTINCT date FROM branch_daily WHERE securities_trader_id = ?", (probe,))}
+    fetched = 0
     logged = False
-    trading_days: list[str] = []
-    for day in window_desc:
-        if len(trading_days) >= n_days:
-            break
-        if day in probe_checked:  # 已查過（增量）
-            if day in probe_has_rows:
-                print(f"[skip] 分點 {probe} {day} 已在 DB（交易日），計入")
-                trading_days.append(day)
-            continue
-        df = fetch_branch_day(dl, probe, day)
-        if len(df):
-            if not logged:
-                print(f"[cols] {probe} {day} 欄位={sorted(df.columns)}，列數={len(df)}")
-                logged = True
-            validate_cols(df, f"{probe} {day}")
-            stored = store_branch_day(conn, probe, day, df)
-            print(f"[fetch] 分點 {probe} {day} 交易日，存入 {stored} 列")
-            trading_days.append(day)
-        else:
-            store_branch_day(conn, probe, day, df)  # 標記非交易日已查（0 列）
-            print(f"[nontrading] 分點 {probe} {day} 無資料，略過")
-    trading_days = sorted(trading_days)
-    for trader_id in branches[1:]:  # 其餘分點補抓已確認的交易日
+    stopped_early = False
+    for trader_id in branches:
         have = {r[0] for r in conn.execute(
             "SELECT date FROM fetched_keys WHERE securities_trader_id = ?", (trader_id,))}
-        for day in trading_days:
-            if day in have:
-                print(f"[skip] 分點 {trader_id} {day} 已涵蓋（增量）")
-                continue
+        missing = [d for d in trading_days if d not in have]
+        if not missing:
+            print(f"[skip] 分點 {trader_id} 已涵蓋全部 {len(trading_days)} 交易日（增量）")
+            continue
+        for day in missing:
+            if fetched >= MAX_REQ_PER_RUN:
+                stopped_early = True
+                break
             df = fetch_branch_day(dl, trader_id, day)
             if len(df):
+                if not logged:
+                    print(f"[cols] {trader_id} {day} 欄位={sorted(df.columns)}，列數={len(df)}")
+                    logged = True
                 validate_cols(df, f"{trader_id} {day}")
             stored = store_branch_day(conn, trader_id, day, df)
+            fetched += 1
             print(f"[fetch] 分點 {trader_id} {day} 存入 {stored} 列")
-    return trading_days
+        if stopped_early:
+            print(f"[budget] 達本次上限 MAX_REQ_PER_RUN={MAX_REQ_PER_RUN}，本次停止（下次續跑）")
+            break
+
+    coverage, remaining = {}, 0
+    td_set = set(trading_days)
+    for trader_id in branches:
+        have = {r[0] for r in conn.execute(
+            "SELECT date FROM fetched_keys WHERE securities_trader_id = ?", (trader_id,))}
+        cov = len(td_set & have)
+        coverage[trader_id] = cov
+        remaining += len(trading_days) - cov
+    print(f"[backfill] 本次抓 {fetched} 對；剩餘未涵蓋 {remaining} 對"
+          f"{'（達上限，下次續跑）' if stopped_early else '（已全部涵蓋）'}")
+    return {"fetched_this_run": fetched, "remaining": remaining,
+            "stopped_early": stopped_early, "target_days": len(trading_days),
+            "coverage": coverage}
 
 
 # ============ 彙總輸出 ============
-def export_summary(conn: sqlite3.Connection, days: list[str], api_info: dict) -> None:
-    placeholders = ",".join("?" * len(days))
+def export_status(conn: sqlite3.Connection, trading_days: list[str],
+                  api_info: dict, progress: dict) -> None:
+    placeholders = ",".join("?" * len(trading_days))
     query = f"""
         SELECT date, securities_trader_id, securities_trader, stock_id,
                SUM(buy  * price)                   AS buy_amount,
@@ -236,7 +240,7 @@ def export_summary(conn: sqlite3.Connection, days: list[str], api_info: dict) ->
         ORDER BY net_amount DESC
         LIMIT ?
     """
-    rows = conn.execute(query, (*days, TOP_N)).fetchall()
+    rows = conn.execute(query, (*trading_days, TOP_N)).fetchall()
     top = [
         {
             "date": r[0],
@@ -251,22 +255,23 @@ def export_summary(conn: sqlite3.Connection, days: list[str], api_info: dict) ->
         }
         for r in rows
     ]
-    rows_per_day = {
-        d: conn.execute(
-            "SELECT COUNT(*) FROM branch_daily WHERE date = ?", (d,)
-        ).fetchone()[0]
-        for d in days
-    }
+    total_rows = conn.execute(
+        f"SELECT COUNT(*) FROM branch_daily WHERE date IN ({placeholders})",
+        tuple(trading_days),
+    ).fetchone()[0]
     payload = {
-        "phase": 1,
+        "phase": 2,
         "dataset": DATASET,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "days_covered": days,
-        "rows_per_day": rows_per_day,
+        "trading_days_target": len(trading_days),
+        "trading_days_range": [trading_days[0], trading_days[-1]] if trading_days else [],
+        "branch_coverage": progress.get("coverage", {}),
+        "backfill_remaining_pairs": progress.get("remaining"),
+        "backfill_stopped_early": progress.get("stopped_early"),
+        "fetched_this_run": progress.get("fetched_this_run"),
+        "total_rows": total_rows,
         "net_buy_formula": "Σ(buy×price) − Σ(sell×price)（逐筆精算，新台幣）",
         "query_note": "非彙總報表以 (securities_trader_id, date) 查詢，逐筆精算。",
-        # Phase 1 檢查點：對照 net_amount 量級是否合理（相對 EVENT_MIN_AMOUNT 門檻），
-        # 並確認 buy/sell 單位是「股」非「張」。
         "phase3_event_threshold": EVENT_MIN_AMOUNT,
         "api_hourly_limit": api_info.get("limit"),
         "api_used": api_info.get("used"),
@@ -277,7 +282,9 @@ def export_summary(conn: sqlite3.Connection, days: list[str], api_info: dict) ->
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(OUTPUT_JSON, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2)
-    print(f"[output] 寫出 {OUTPUT_JSON}；top {len(top)} 筆，涵蓋 {days}")
+    print(f"[output] 寫出 {OUTPUT_JSON}；目標 {len(trading_days)} 交易日，"
+          f"總列數 {total_rows}，top {len(top)} 筆")
+    print(f"[coverage] 各分點涵蓋交易日數：{progress.get('coverage')}")
     for r in top[:5]:  # 印樣本供 log 檢視量級（確認 buy/sell 為股數、金額合理）
         print(f"[sample] {r['date']} 分點{r['securities_trader_id']} 股{r['stock_id']} "
               f"淨買超={r['net_amount']:,.0f} (買{r['buy_shares']:,}股/賣{r['sell_shares']:,}股)")
@@ -285,34 +292,30 @@ def export_summary(conn: sqlite3.Connection, days: list[str], api_info: dict) ->
 
 # ============ main ============
 def main() -> None:
-    parser = argparse.ArgumentParser(description="tw-branch-radar collector (Phase 1)")
-    parser.add_argument("--days", type=int, default=PHASE1_DAYS, help="輸出取最近幾個交易日")
+    parser = argparse.ArgumentParser(description="tw-branch-radar collector")
+    parser.add_argument("--days", type=int, default=LOOKBACK_DAYS, help="回補最近幾個交易日")
     parser.add_argument("--anchor", default="", help="錨定日 YYYY-MM-DD（預設今天）")
     parser.add_argument("--branches", default="",
-                        help="逗號分隔分點代碼 securities_trader_id（預設 PHASE1_BRANCHES）")
+                        help="逗號分隔分點代碼 securities_trader_id（預設 DEFAULT_BRANCHES）")
     args = parser.parse_args()
 
     anchor = date.fromisoformat(args.anchor) if args.anchor else date.today()
     override = [s.strip() for s in args.branches.split(",") if s.strip()]
-    branches = override or list(PHASE1_BRANCHES)
-    print(f"=== tw-branch-radar collector Phase 1（逐筆精算）==="
-          f"（錨定日={anchor}，分點={branches}，取最近 {args.days} 交易日）")
+    branches = override or list(DEFAULT_BRANCHES)
+    print(f"=== tw-branch-radar collector（逐筆精算）==="
+          f"（錨定日={anchor}，分點={branches}，目標 {args.days} 交易日，本次上限 {MAX_REQ_PER_RUN} 對）")
 
     dl = get_loader()
     api_info = report_api_limit(dl)
+    trading_days = get_trading_days(dl, anchor, args.days)
+    print(f"[calendar] 取得 {len(trading_days)} 交易日：{trading_days[0]}~{trading_days[-1]}")
 
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     try:
         init_db(conn)
-        days = collect(dl, conn, branches, anchor, args.days)
-        if len(days) < args.days:
-            raise SystemExit(
-                f"僅取得 {len(days)}/{args.days} 個交易日"
-                f"（窗={WINDOW_CAL_DAYS} 日曆天，分點={branches}）。"
-                " 可能錨定日太近假期、window 太短、或分點近期無交易；"
-                " 請調整 --anchor / WINDOW_CAL_DAYS / --branches。")
-        export_summary(conn, days, api_info)
+        progress = backfill(dl, conn, branches, trading_days)
+        export_status(conn, trading_days, api_info, progress)
     finally:
         conn.close()
     print("=== 完成 ===")

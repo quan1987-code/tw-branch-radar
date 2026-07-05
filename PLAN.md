@@ -82,8 +82,8 @@
 - **驗收**：(1) DB 有 3 個交易日資料；(2) 重跑不重抓（整窗已涵蓋則 skip，log 顯示）；(3) 輸出 JSON 內含 (分點,股,日,淨買超金額)；(4) log 印出實際每小時上限數字；(5) 單次執行 < 15 分；(6) 確認 SecIdAgg 於 Sponsor 可用（若層級不足會明確報 user level 錯誤）。「關鍵指令」已補進 CLAUDE.md。
 
 ### Phase 2 — 增量抓取 + 交易日曆 + 120 日回補
-- **做法**：用 `TaiwanStockTradingDate` 建交易日曆；實作「只補缺日」增量；DB schema 定稿（分點 raw + 交易日曆表）；回補最近 **120 交易日**分點資料。
-- **驗收**：(1) DB 覆蓋 120 交易日；(2) 二次執行零重抓（log 顯示 skip）；(3) 單次 Actions < 15 分；(4) DB 不進 repo（.gitignore 驗證）。
+- **做法**：用 `TaiwanStockTradingDate(start,end)`（回單欄 `date` 交易日清單）取代 Phase 1 的探測法，取最近 **120 個交易日**；對 branches × 120 交易日補齊缺的 (分點,日)（`fetched_keys` 判缺、只補缺、空日也標記避免重查）；`branch_daily` schema 沿用。加每次執行請求上限 `MAX_REQ_PER_RUN`（env 可調，安全界：達上限則本次停、下次續跑——為 Phase 3 大宇宙分批回補鋪路）。小宇宙（預設 1020）120 日≈120 請求，單次可完成。輸出 `data/phase2_status.json`（各分點涵蓋交易日數＋回補進度＋top 淨買超）。
+- **驗收**：(1) DB 覆蓋 120 交易日（JSON/log 顯示）；(2) 二次執行零重抓（log 全 skip）；(3) 單次 Actions < 15 分；(4) DB 不進 repo；(5) 交易日曆來自 `TaiwanStockTradingDate`（非探測）。
 
 ### Phase 3 — 功能 A：勝率分點排行
 - **做法**：四參數常數化（`LOOKBACK_DAYS=120`／`EVENT_MIN_AMOUNT=5_000_000`／`HOLD_DAYS=5`／`MIN_EVENTS=10`）。
