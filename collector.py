@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """collector.py — tw-branch-radar 台股分點雷達 資料抓取器
 
-Phase 1（最小垂直切片）：用單一 dataset ``TaiwanStockTradingDailyReportSecIdAgg``
-（分點統計表，逐股以日期範圍查詢）抓一小組股票近幾個交易日的分點買賣彙總，落地
+Phase 1（最小垂直切片）：核心用 ``TaiwanStockTradingDailyReportSecIdAgg``
+（分點統計表，逐「分點」以日期範圍查詢）抓數個分點近幾個交易日的買賣彙總，落地
 SQLite，計算各分點對個股單日「淨買超金額」後輸出一個 JSON，證明整條管線通。
+分點代碼由 ``TaiwanSecuritiesTraderInfo`` 動態取得（不憑記憶編碼）。
 
 註：原設計用整日物件（use_object）需 Sponsor Pro，本專案僅 Sponsor，故改用
-SecIdAgg（買/賣均價估算淨買超；使用者已於決定 A 確認採此近似）。
+SecIdAgg（買/賣均價估算淨買超；使用者已於決定 A 確認採此近似）。實跑證實 SecIdAgg
+必須以 securities_trader_id 查詢（不可只給 stock_id）。
 
 鐵律：
 - FINMIND_TOKEN 只從環境變數讀，不寫死、不 commit。
 - 原始分點明細只留 SQLite（actions/cache），不 commit 進 repo。
-- 增量抓取：已涵蓋的 (股票,日) 不重抓（second run 應為零網路請求）。
+- 增量抓取：已涵蓋的 (分點,日) 不重抓（second run 應為零網路請求）。
 
 資料來源：FinMind（https://finmind.github.io/）。個人非商業用途。
 """
@@ -36,9 +38,10 @@ HOLD_DAYS = 5                 # 事件後持有交易日數
 MIN_EVENTS = 10               # 列入排行的最少事件數
 
 # --- Phase 1 專用（SecIdAgg 分點統計；整日物件需 Sponsor Pro，本專案僅 Sponsor） ---
-PHASE1_STOCKS = ["2330", "2317", "2454"]  # 最小宇宙：台積電/鴻海/聯發科（Phase 3 再擴全市場）
+# 實跑證實：SecIdAgg 必須以 securities_trader_id（分點代碼）查詢，故 Phase 1 取樣數個分點。
+PHASE1_BRANCHES = 5           # Phase 1 取樣幾個分點（securities_trader_id）
 PHASE1_DAYS = 3               # 最終輸出取最近幾個交易日
-WINDOW_CAL_DAYS = 15          # 每檔往回查的日曆天窗（需含 ≥ PHASE1_DAYS 個交易日）
+WINDOW_CAL_DAYS = 15          # 往回查的日曆天窗（需含 ≥ PHASE1_DAYS 個交易日）
 TOP_N = 50                    # 輸出前 N 筆淨買超
 REQ_TIMEOUT = 120             # 單次查詢逾時（秒）
 
@@ -95,12 +98,12 @@ def init_db(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (date, stock_id, securities_trader_id)
         );
         CREATE INDEX IF NOT EXISTS idx_agg_date ON branch_daily_agg(date);
-        -- 增量涵蓋標記：某檔某「平日」已查過（含非交易日，避免下次重查）
+        -- 增量涵蓋標記：某分點某「平日」已查過（含非交易日，避免下次重查）
         CREATE TABLE IF NOT EXISTS fetched_keys(
-            stock_id   TEXT,
-            date       TEXT,
-            fetched_at TEXT,
-            PRIMARY KEY (stock_id, date)
+            securities_trader_id TEXT,
+            date                 TEXT,
+            fetched_at           TEXT,
+            PRIMARY KEY (securities_trader_id, date)
         );
         """
     )
@@ -117,11 +120,11 @@ def weekday_window(anchor: date, cal_days: int) -> list[str]:
     return sorted(days)
 
 
-def store_stock_window(conn: sqlite3.Connection, stock_id: str,
-                       window_days: list[str], df) -> int:
-    """寫入某檔 window 內的 SecIdAgg 列，並標記整個 window 已涵蓋（含非交易日）。
+def store_branch_window(conn: sqlite3.Connection, trader_id: str,
+                        window_days: list[str], df) -> int:
+    """寫入某分點 window 內的 SecIdAgg 列，並標記整個 window 已涵蓋（含非交易日）。
 
-    先刪該檔 window 內舊列再插入（重跑同窗安全、不重複）；window 內每個平日都
+    先刪該分點 window 內舊列再插入（重跑同窗安全、不重複）；window 內每個平日都
     寫入 fetched_keys，使非交易日下次不再重查（達成增量零重抓）。
     """
     cols = ["date", "stock_id", "securities_trader_id", "securities_trader",
@@ -130,8 +133,8 @@ def store_stock_window(conn: sqlite3.Connection, stock_id: str,
     now = datetime.now(timezone.utc).isoformat()
     with conn:
         conn.executemany(
-            "DELETE FROM branch_daily_agg WHERE stock_id = ? AND date = ?",
-            [(stock_id, d) for d in window_days],
+            "DELETE FROM branch_daily_agg WHERE securities_trader_id = ? AND date = ?",
+            [(trader_id, d) for d in window_days],
         )
         conn.executemany(
             "INSERT INTO branch_daily_agg"
@@ -141,28 +144,50 @@ def store_stock_window(conn: sqlite3.Connection, stock_id: str,
             records,
         )
         conn.executemany(
-            "INSERT OR REPLACE INTO fetched_keys(stock_id, date, fetched_at) VALUES (?, ?, ?)",
-            [(stock_id, d, now) for d in window_days],
+            "INSERT OR REPLACE INTO fetched_keys(securities_trader_id, date, fetched_at)"
+            " VALUES (?, ?, ?)",
+            [(trader_id, d, now) for d in window_days],
         )
     return len(records)
 
 
-def validate_cols(df, stock_id: str) -> None:
+def validate_cols(df, key: str) -> None:
     missing = EXPECTED_COLS - set(df.columns)
     if missing:
         raise SystemExit(
-            f"SecIdAgg 欄位缺少 {sorted(missing)}（{stock_id}）；實際欄位={sorted(df.columns)}。"
+            f"SecIdAgg 欄位缺少 {sorted(missing)}（{key}）；實際欄位={sorted(df.columns)}。"
             " 欄位與 FinMind client 文件不符，請先核對再續作。"
         )
 
 
-# ============ 抓取（增量，SecIdAgg 逐股日期範圍） ============
-def ensure_coverage(dl: DataLoader, conn: sqlite3.Connection,
-                    stocks: list[str], anchor: date, n_days: int) -> list[str]:
-    """對每檔補齊 window 內缺的平日：用 SecIdAgg 一次查該檔整段日期範圍。
+def get_branch_codes(dl: DataLoader, n: int, override: list[str]) -> list[str]:
+    """取得要抓的分點代碼清單：override 非空則用之；否則由 TaiwanSecuritiesTraderInfo
+    動態取前 n 個（不憑記憶編碼，符合鐵律 2）。"""
+    if override:
+        return override
+    info = dl.taiwan_securities_trader_info()
+    if info is None or not len(info):
+        raise SystemExit("取得券商清單失敗（TaiwanSecuritiesTraderInfo 回空）。")
+    codes: list[str] = []
+    seen: set[str] = set()
+    for cid in info["securities_trader_id"].tolist():
+        cid = str(cid)
+        if cid and cid not in seen:
+            seen.add(cid)
+            codes.append(cid)
+        if len(codes) >= n:
+            break
+    print(f"[branches] 由 TaiwanSecuritiesTraderInfo 取樣 {len(codes)} 個分點：{codes}")
+    return codes
 
-    已完整涵蓋（fetched_keys 已含 window 全部平日）的股票直接跳過，達成增量零重抓。
-    SecIdAgg 走一般 get_data 路徑：若層級不足，FinMind 回錯誤而非空資料，client 端
+
+# ============ 抓取（增量，SecIdAgg 逐分點日期範圍） ============
+def ensure_coverage(dl: DataLoader, conn: sqlite3.Connection,
+                    branches: list[str], anchor: date, n_days: int) -> list[str]:
+    """對每個分點補齊 window 內缺的平日：用 SecIdAgg 一次查該分點整段日期範圍。
+
+    已完整涵蓋（fetched_keys 已含 window 全部平日）的分點直接跳過，達成增量零重抓。
+    SecIdAgg 走一般 get_data 路徑：層級不足或參數錯誤時 FinMind 回錯誤、client 端
     _extract_data 會 raise，我們在此轉成可讀訊息並中止（不會被誤當非交易日）。
     回傳 window 內實際有資料的平日（供輸出用）。
     """
@@ -170,28 +195,28 @@ def ensure_coverage(dl: DataLoader, conn: sqlite3.Connection,
     start, end = window[0], window[-1]
     window_set = set(window)
     logged_cols = False
-    for stock_id in stocks:
+    for trader_id in branches:
         have = {r[0] for r in conn.execute(
-            "SELECT date FROM fetched_keys WHERE stock_id = ?", (stock_id,))}
+            "SELECT date FROM fetched_keys WHERE securities_trader_id = ?", (trader_id,))}
         if window_set <= have:
-            print(f"[skip] {stock_id} 窗 {start}~{end} 已涵蓋，跳過（增量）")
+            print(f"[skip] 分點 {trader_id} 窗 {start}~{end} 已涵蓋，跳過（增量）")
             continue
         try:
             df = dl.taiwan_stock_trading_daily_report_secid_agg(
-                stock_id=stock_id, start_date=start, end_date=end, timeout=REQ_TIMEOUT)
+                securities_trader_id=trader_id, start_date=start, end_date=end,
+                timeout=REQ_TIMEOUT)
         except Exception as exc:  # noqa: BLE001 - 轉可讀訊息
             raise SystemExit(
-                f"SecIdAgg 查詢失敗（{stock_id}）：{exc}\n"
-                "若訊息提及 user level，代表此 dataset 在 Sponsor 不可用、需 Sponsor Pro；"
-                "請回報此訊息，我改採其他來源。")
+                f"SecIdAgg 查詢失敗（分點 {trader_id}）：{exc}\n"
+                "若訊息提及 user level 代表需 Sponsor Pro；其他參數錯誤請回報以便修正。")
         if len(df):
             if not logged_cols:
-                print(f"[cols] {stock_id} SecIdAgg 欄位={sorted(df.columns)}，列數={len(df)}")
+                print(f"[cols] 分點 {trader_id} SecIdAgg 欄位={sorted(df.columns)}，列數={len(df)}")
                 logged_cols = True
-            validate_cols(df, stock_id)
+            validate_cols(df, trader_id)
             df = df[df["date"].astype(str).isin(window_set)]  # 保險：僅留窗內日期
-        stored = store_stock_window(conn, stock_id, window, df)
-        print(f"[fetch] {stock_id} 取得 {stored} 列（{start}~{end}）")
+        stored = store_branch_window(conn, trader_id, window, df)
+        print(f"[fetch] 分點 {trader_id} 取得 {stored} 列（{start}~{end}）")
     return recent_trading_days(conn, window, n_days)
 
 
@@ -271,27 +296,30 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="tw-branch-radar collector (Phase 1)")
     parser.add_argument("--days", type=int, default=PHASE1_DAYS, help="輸出取最近幾個交易日")
     parser.add_argument("--anchor", default="", help="錨定日 YYYY-MM-DD（預設今天）")
-    parser.add_argument("--stocks", default="", help="逗號分隔股票代碼（預設 Phase 1 小宇宙）")
+    parser.add_argument("--branches", default="",
+                        help="逗號分隔分點代碼 securities_trader_id（預設由券商清單取樣）")
     args = parser.parse_args()
 
     anchor = date.fromisoformat(args.anchor) if args.anchor else date.today()
-    stocks = [s.strip() for s in args.stocks.split(",") if s.strip()] or PHASE1_STOCKS
-    print(f"=== tw-branch-radar collector Phase 1（SecIdAgg）==="
-          f"（錨定日={anchor}，股票={stocks}，取最近 {args.days} 交易日）")
+    override = [s.strip() for s in args.branches.split(",") if s.strip()]
+    print(f"=== tw-branch-radar collector Phase 1（SecIdAgg 逐分點）==="
+          f"（錨定日={anchor}，取最近 {args.days} 交易日）")
 
     dl = get_loader()
     api_info = report_api_limit(dl)
+    branches = get_branch_codes(dl, PHASE1_BRANCHES, override)
 
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     try:
         init_db(conn)
-        days = ensure_coverage(dl, conn, stocks, anchor, args.days)
+        days = ensure_coverage(dl, conn, branches, anchor, args.days)
         if len(days) < args.days:
             raise SystemExit(
                 f"僅取得 {len(days)}/{args.days} 個交易日"
-                f"（窗={WINDOW_CAL_DAYS} 日曆天，股票={stocks}）。"
-                " 可能錨定日太近假期或 window 太短；請調整 --anchor 或 WINDOW_CAL_DAYS。")
+                f"（窗={WINDOW_CAL_DAYS} 日曆天，分點={branches}）。"
+                " 可能錨定日太近假期、window 太短、或取樣分點近期無交易；"
+                " 請調整 --anchor / WINDOW_CAL_DAYS / --branches。")
         export_summary(conn, days, api_info)
     finally:
         conn.close()

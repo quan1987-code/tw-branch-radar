@@ -1,7 +1,7 @@
 # PLAN.md — tw-branch-radar 台股分點雷達
 
 > 本檔為進度主檔。每完成一段即更新「進度追蹤」勾選並 commit+push（雲端環境：存檔＝commit+push）。
-> Session 開頭先讀本檔續作。狀態：**Phase 1 首次 Actions 實跑證實「整日物件需 Sponsor Pro、本專案僅 Sponsor 用不了」（Sponsor 上限實測=6000/hr）。已依使用者決定 A 改用 SecIdAgg 分點統計（均價估算），程式改寫完成並通過離線測試；待再次 Actions 實跑驗收（含確認 SecIdAgg 於 Sponsor 可用）。**
+> Session 開頭先讀本檔續作。狀態：**Phase 1 兩次實跑證實：(1) 整日物件需 Sponsor Pro；(2) SecIdAgg 在 Sponsor 可用，但必須以 `securities_trader_id`（分點代碼）查詢、不可用 stock_id。已改為逐分點（代碼由 `TaiwanSecuritiesTraderInfo` 動態取得），程式改寫＋離線測試通過；待第三次 Actions 實跑驗收。Sponsor 上限實測=6000/hr。**
 
 ---
 
@@ -36,7 +36,7 @@
 - **重要口徑**：逐筆表（`TaiwanStockTradingDailyReport`）同一 (分點,股,日) 有多列（不同成交價），逐筆精算＝ Σ(buy×price) − Σ(sell×price)——**但此需 Sponsor Pro**。本專案改用 SecIdAgg：每列已是 (日,分點,股) 彙總，淨買超以**均價估算**＝ `buy_volume×buy_price − sell_volume×sell_price`（決定 A 採此近似）。
 - **輔助 dataset**：
   - `TaiwanSecuritiesTraderInfo`（券商代碼↔名稱對照；欄位 `securities_trader_id,securities_trader,date,address,phone`）。
-  - `TaiwanStockTradingDailyReportSecIdAgg`（分點統計表，已預彙總、支援日期範圍；欄位 `date,stock_id,securities_trader_id,securities_trader,buy_volume,sell_volume,buy_price(買進均價),sell_price(賣出均價)`）——為 Phase 3 金額口徑的備選（見「需確認決定」）。
+  - `TaiwanStockTradingDailyReportSecIdAgg`（分點統計表，已預彙總、支援日期範圍；欄位 `date,stock_id,securities_trader_id,securities_trader,buy_volume,sell_volume,buy_price(買進均價),sell_price(賣出均價)`）——**本專案採用之主來源**。實跑證實：**必須以 `securities_trader_id`（分點代碼）查詢**（只給 stock_id 會被拒 `securities_trader_id can't be none`），故逐分點抓；分點代碼清單取自 `TaiwanSecuritiesTraderInfo`。於 Sponsor 可用（已實跑證實）。
 
 #### 2. 鉅額交易（盤後鉅額買賣）
 - **Dataset**：`TaiwanStockBlockTrade`（鉅額交易日成交資訊，逐筆）
@@ -77,7 +77,7 @@
 ## 分段規劃（7 段，每段有可判定驗收）
 
 ### Phase 1 — 最小垂直切片（單一 dataset，證明整條管線通）★必為最小切片
-- **做法**：只用 `TaiwanStockTradingDailyReportSecIdAgg`（分點統計表），對一小組股票（`PHASE1_STOCKS=2330/2317/2454`）以日期範圍查詢近 3 個交易日 → 落地 SQLite（`branch_daily_agg`）→ 以 actions/cache 保存 DB → 產出**一個 JSON**（各分點對個股「淨買超金額」＝buy_volume×buy_price−sell_volume×sell_price，top N）。同時印 `api_request_limit`（已實測=6000）。
+- **做法**：核心用 `TaiwanStockTradingDailyReportSecIdAgg`（分點統計表），對取樣的數個分點（`PHASE1_BRANCHES=5`，代碼由 `TaiwanSecuritiesTraderInfo` 動態取得）以日期範圍查詢近 3 個交易日 → 落地 SQLite（`branch_daily_agg`）→ 以 actions/cache 保存 DB → 產出**一個 JSON**（各分點對個股「淨買超金額」＝buy_volume×buy_price−sell_volume×sell_price，top N）。同時印 `api_request_limit`（已實測=6000）。（註：因 SecIdAgg 須以分點代碼查詢，Phase 1 除核心 dataset 外另用 `TaiwanSecuritiesTraderInfo` 取分點清單。）
 - **選此 dataset 理由**：分點是勝率旗艦功能骨幹；SecIdAgg 是 Sponsor 可行且省請求的路徑（逐股一次抓日期範圍）。整日物件因需 Sponsor Pro 已排除。
 - **驗收**：(1) DB 有 3 個交易日資料；(2) 重跑不重抓（整窗已涵蓋則 skip，log 顯示）；(3) 輸出 JSON 內含 (分點,股,日,淨買超金額)；(4) log 印出實際每小時上限數字；(5) 單次執行 < 15 分；(6) 確認 SecIdAgg 於 Sponsor 可用（若層級不足會明確報 user level 錯誤）。「關鍵指令」已補進 CLAUDE.md。
 
@@ -116,7 +116,7 @@
 1. **勝率四參數**：✔ 維持預設 `120 交易日／單日淨買超 ≥ 500 萬／持有 5 交易日／事件數 ≥ 10`（皆常數化可隨時改）。另採兩項「不改參數、只改排序/勝負口徑」的升級：排序改 Wilson 下界＋一律顯示事件數 N（見 Phase 3）；「超額報酬」勝負與相對成交額門檻列 v1.1 待議。
 2. **部署**：✔ 公開 GitHub Pages（repo 需 public；禁區更須嚴守，見 Phase 7）。
 3. **勝率「買超金額」計算口徑**：✔ 決定 A——本專案 Sponsor 用 SecIdAgg 均價估算 `buy_volume×buy_price − sell_volume×sell_price`。逐筆精算需 Sponsor Pro（實跑已證整日物件在 Sponsor 回 400）；未來升級可無痛切換。
-4. **勝率涵蓋範圍**：SecIdAgg 為逐股查詢，需明列股票宇宙（Phase 1 先用小宇宙 3 檔，Phase 3 擴至全市場清單）；功能 C 追蹤清單另給小清單——**待使用者提供追蹤清單內容**（Phase 5 前再定，不擋 Phase 1）。
+4. **勝率涵蓋範圍**：SecIdAgg 為**逐分點**查詢（securities_trader_id），需列舉分點宇宙——分點清單取自 `TaiwanSecuritiesTraderInfo`（Phase 1 取樣 5 個分點，Phase 3 擴至全部分點）；功能 C 追蹤清單另給小清單——**待使用者提供追蹤清單內容**（Phase 5 前再定，不擋 Phase 1）。
 5. **大盤替代來源**：✔ 採 TWSE FMTQIK（免 token）取代 FinMind 缺項。
 
 ---
@@ -124,7 +124,8 @@
 ## 未查證 TODO（Actions 實測補齊）
 - [x] FinMind Sponsor 每小時上限＝**6000**（2026-07-05 `user_info.api_request_limit` 實測）。
 - [x] 整日物件 `use_object` 層級＝**需 Sponsor Pro**（實跑回 `400 "update your user level"`）。
-- [ ] `TaiwanStockTradingDailyReportSecIdAgg` 於 Sponsor 是否可用（下次實跑確認；若不可用需再換來源）。
+- [x] `TaiwanStockTradingDailyReportSecIdAgg` 於 Sponsor **可用**，但**必須以 `securities_trader_id` 查詢**（2026-07-05 實跑：只給 stock_id 回 `securities_trader_id can't be none`）。
+- [ ] `TaiwanSecuritiesTraderInfo` 於 Sponsor 是否可用、回傳分點總數（下次實跑確認；影響 Phase 3 全市場請求數估算）。
 - [ ] `TaiwanStockPrice`／`TaiwanStockTotalReturnIndex` 是否 Sponsor 可取。
 - [ ] TWSE FMTQIK 回傳 JSON 的實際欄位鍵名與型別（Phase 5 實測對映）。
 - [ ] SecIdAgg 逐股查詢在全市場規模的請求數與耗時（驗證 15 分預算；Phase 2/3）。
