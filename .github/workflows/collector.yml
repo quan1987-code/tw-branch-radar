@@ -1,0 +1,50 @@
+name: collector (Phase 1)
+
+# Phase 1：手動觸發，證明整條管線通（抓取→SQLite→JSON）。
+# Phase 7 再加每日 schedule cron 與產物 commit。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read          # Phase 1 只產 artifact，不 push（最小權限）
+
+concurrency:
+  group: collector
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15     # 鐵律：單次執行以 15 分鐘為上限
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # pandas<2 有 cp311 manylinux wheel，免編譯、裝得快
+          cache: pip
+
+      - name: Restore SQLite cache
+        uses: actions/cache@v4
+        with:
+          path: .cache            # 原始明細 DB 只存在這裡，不進 repo
+          key: branchdb-v1-${{ github.run_id }}
+          restore-keys: |
+            branchdb-v1-
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run collector
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}   # 需先於 repo 設定 secret
+        run: python collector.py
+
+      - name: Upload data JSON (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-data
+          path: data/*.json
+          if-no-files-found: warn
