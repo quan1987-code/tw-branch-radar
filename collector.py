@@ -36,6 +36,7 @@ LOOKBACK_DAYS = 120           # 回看交易日數
 EVENT_MIN_AMOUNT = 5_000_000  # 單日淨買超金額門檻（新台幣）
 HOLD_DAYS = 5                 # 事件後持有交易日數
 MIN_EVENTS = 10               # 列入排行的最少事件數
+WILSON_Z = 1.96               # Wilson 下界 z 值（95%）；排序用，避免小樣本灌水
 
 # --- 抓取設定（非彙總分點日報表 TaiwanStockTradingDailyReport；逐筆精算） ---
 # 實跑證實：整日物件 use_object 需 Sponsor Pro；SecIdAgg 需股+分點兩者。故用非彙總報表以
@@ -57,6 +58,7 @@ EXPECTED_COLS = {
 DB_PATH = os.environ.get("BRANCH_DB", os.path.join(".cache", "branch.db"))
 DATA_DIR = os.environ.get("DATA_DIR", "data")
 OUTPUT_JSON = os.path.join(DATA_DIR, "status.json")
+RANKING_JSON = os.path.join(DATA_DIR, "ranking.json")
 
 
 # ============ FinMind ============
@@ -105,6 +107,20 @@ def init_db(conn: sqlite3.Connection) -> None:
             date                 TEXT,
             fetched_at           TEXT,
             PRIMARY KEY (securities_trader_id, date)
+        );
+        -- 個股收盤價（勝率 +5 交易日比對用；來源 TaiwanStockPrice）
+        CREATE TABLE IF NOT EXISTS stock_price(
+            date     TEXT,
+            stock_id TEXT,
+            close    REAL,
+            PRIMARY KEY (date, stock_id)
+        );
+        -- 個股價格已抓區間（增量：涵蓋 [start,end] 則不重抓）
+        CREATE TABLE IF NOT EXISTS price_fetched(
+            stock_id   TEXT PRIMARY KEY,
+            start_date TEXT,
+            end_date   TEXT,
+            fetched_at TEXT
         );
         """
     )
@@ -290,6 +306,147 @@ def export_status(conn: sqlite3.Connection, trading_days: list[str],
               f"淨買超={r['net_amount']:,.0f} (買{r['buy_shares']:,}股/賣{r['sell_shares']:,}股)")
 
 
+# ============ Phase 3：勝率分點排行 ============
+def wilson_lb(wins: int, n: int, z: float = WILSON_Z) -> float:
+    """勝率的 Wilson 分數下界（懲罰小樣本，避免 10 場 8 勝灌水贏過 200 場 62%）。"""
+    if n <= 0:
+        return 0.0
+    p = wins / n
+    denom = 1 + z * z / n
+    centre = p + z * z / (2 * n)
+    margin = z * ((p * (1 - p) + z * z / (4 * n)) / n) ** 0.5
+    return (centre - margin) / denom
+
+
+def extract_events(conn: sqlite3.Connection, trading_days: list[str]) -> list[dict]:
+    """從 branch_daily 抽事件：某 (分點,股,日) 淨買超金額 ≥ EVENT_MIN_AMOUNT。"""
+    ph = ",".join("?" * len(trading_days))
+    query = f"""
+        SELECT date, securities_trader_id, securities_trader, stock_id,
+               SUM(buy * price) - SUM(sell * price) AS net_amount
+        FROM branch_daily
+        WHERE date IN ({ph})
+        GROUP BY date, securities_trader_id, securities_trader, stock_id
+        HAVING net_amount >= ?
+    """
+    rows = conn.execute(query, (*trading_days, EVENT_MIN_AMOUNT)).fetchall()
+    return [{"date": r[0], "securities_trader_id": r[1], "securities_trader": r[2],
+             "stock_id": r[3], "net_amount": r[4]} for r in rows]
+
+
+def fetch_stock_price(dl: DataLoader, stock_id: str, start: str, end: str):
+    """查個股日價量（TaiwanStockPrice）；錯誤轉可讀訊息並中止。"""
+    try:
+        return dl.taiwan_stock_daily(
+            stock_id=stock_id, start_date=start, end_date=end, timeout=REQ_TIMEOUT)
+    except Exception as exc:  # noqa: BLE001
+        raise SystemExit(f"股價查詢失敗（{stock_id}）：{exc}")
+
+
+def _price_covered(conn, stock_id, start, end) -> bool:
+    row = conn.execute(
+        "SELECT start_date, end_date FROM price_fetched WHERE stock_id = ?", (stock_id,)).fetchone()
+    return bool(row and row[0] <= start and row[1] >= end)
+
+
+def ensure_prices(dl: DataLoader, conn: sqlite3.Connection,
+                  stocks: list[str], start: str, end: str, budget: int) -> dict:
+    """對 event 個股補齊 [start,end] 的收盤價；每檔一次請求（涵蓋整段），至多 budget 檔。"""
+    fetched, stopped = 0, False
+    for stock_id in stocks:
+        if _price_covered(conn, stock_id, start, end):
+            continue
+        if fetched >= budget:
+            stopped = True
+            break
+        df = fetch_stock_price(dl, stock_id, start, end)
+        recs = []
+        if len(df):
+            if "close" not in df.columns:
+                raise SystemExit(f"股價欄位缺 close（{stock_id}）；實際={sorted(df.columns)}")
+            for d, c in zip(df["date"].astype(str), df["close"].tolist()):
+                recs.append((str(d)[:10], stock_id, float(c)))
+        with conn:
+            conn.executemany(
+                "INSERT OR REPLACE INTO stock_price(date, stock_id, close) VALUES (?, ?, ?)", recs)
+            conn.execute(
+                "INSERT OR REPLACE INTO price_fetched(stock_id, start_date, end_date, fetched_at)"
+                " VALUES (?, ?, ?, ?)",
+                (stock_id, start, end, datetime.now(timezone.utc).isoformat()))
+        fetched += 1
+    covered = sum(1 for s in stocks if _price_covered(conn, s, start, end))
+    print(f"[prices] 本次抓 {fetched} 檔股價；已涵蓋 {covered}/{len(stocks)} 檔"
+          f"{'（達上限，下次續跑）' if stopped else ''}")
+    return {"fetched": fetched, "covered": covered, "target": len(stocks), "stopped_early": stopped}
+
+
+def compute_ranking(conn: sqlite3.Connection, trading_days: list[str],
+                    events: list[dict]) -> dict:
+    """以事件＋+HOLD_DAYS 交易日 close 判勝負，彙總各分點勝率並以 Wilson 下界排序。"""
+    idx = {d: i for i, d in enumerate(trading_days)}
+    n = len(trading_days)
+    stocks = {e["stock_id"] for e in events}
+    close = {}
+    for s in stocks:
+        for d, c in conn.execute("SELECT date, close FROM stock_price WHERE stock_id = ?", (s,)):
+            close[(d, s)] = c
+    per: dict = {}
+    for e in events:
+        tid = e["securities_trader_id"]
+        st = per.setdefault(tid, {"securities_trader": e["securities_trader"],
+                                  "events": 0, "evaluable": 0, "wins": 0, "pending": 0})
+        st["events"] += 1
+        i = idx.get(e["date"])
+        if i is None or i + HOLD_DAYS >= n:
+            st["pending"] += 1
+            continue
+        c0 = close.get((e["date"], e["stock_id"]))
+        c1 = close.get((trading_days[i + HOLD_DAYS], e["stock_id"]))
+        if c0 is None or c1 is None:
+            st["pending"] += 1
+            continue
+        st["evaluable"] += 1
+        if c1 > c0:
+            st["wins"] += 1
+    ranking = []
+    for tid, st in per.items():
+        if st["evaluable"] >= MIN_EVENTS:
+            wr = st["wins"] / st["evaluable"]
+            ranking.append({
+                "securities_trader_id": tid, "securities_trader": st["securities_trader"],
+                "events": st["events"], "evaluable": st["evaluable"], "wins": st["wins"],
+                "pending": st["pending"], "win_rate": round(wr, 4),
+                "wilson_lb": round(wilson_lb(st["wins"], st["evaluable"]), 4),
+            })
+    ranking.sort(key=lambda x: x["wilson_lb"], reverse=True)
+    return {"ranking": ranking, "branches_considered": len(per), "branches_ranked": len(ranking)}
+
+
+def export_ranking(result: dict, api_info: dict) -> None:
+    payload = {
+        "phase": 3,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "params": {"lookback_days": LOOKBACK_DAYS, "event_min_amount": EVENT_MIN_AMOUNT,
+                   "hold_days": HOLD_DAYS, "min_events": MIN_EVENTS},
+        "win_definition": ("分點對個股單日淨買超 ≥ 門檻計 1 事件；事件日+HOLD_DAYS 交易日 "
+                           "close > 事件日 close 為勝；排序用 Wilson 下界（懲罰小樣本）"),
+        "branches_considered": result["branches_considered"],
+        "branches_ranked": result["branches_ranked"],
+        "ranking": result["ranking"],
+        "api_hourly_limit": api_info.get("limit"),
+        "source": "FinMind",
+    }
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(RANKING_JSON, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+    print(f"[ranking] 寫出 {RANKING_JSON}；納入排行 {result['branches_ranked']}/"
+          f"{result['branches_considered']} 個分點")
+    for r in result["ranking"][:10]:
+        print(f"[rank] {r['securities_trader_id']}({r['securities_trader']}) "
+              f"勝率={r['win_rate']:.1%} Wilson={r['wilson_lb']:.3f} "
+              f"(勝{r['wins']}/{r['evaluable']}，事件{r['events']}，pending{r['pending']})")
+
+
 # ============ main ============
 def main() -> None:
     parser = argparse.ArgumentParser(description="tw-branch-radar collector")
@@ -316,6 +473,19 @@ def main() -> None:
         init_db(conn)
         progress = backfill(dl, conn, branches, trading_days)
         export_status(conn, trading_days, api_info, progress)
+
+        # Phase 3：勝率排行（僅在分點資料已完整回補時計算）
+        if progress["remaining"] == 0:
+            events = extract_events(conn, trading_days)
+            stocks = sorted({e["stock_id"] for e in events})
+            print(f"[events] 事件數={len(events)}，涉及 {len(stocks)} 檔個股"
+                  f"（門檻淨買超 ≥ {EVENT_MIN_AMOUNT:,}）")
+            budget_left = max(0, MAX_REQ_PER_RUN - progress["fetched_this_run"])
+            ensure_prices(dl, conn, stocks, trading_days[0], trading_days[-1], budget_left)
+            result = compute_ranking(conn, trading_days, events)
+            export_ranking(result, api_info)
+        else:
+            print(f"[ranking] 分點資料尚未完整回補（剩 {progress['remaining']} 對），本次略過排行")
     finally:
         conn.close()
     print("=== 完成 ===")
