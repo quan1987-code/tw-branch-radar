@@ -1,7 +1,9 @@
 name: collector
 
-# 手動觸發：抓取→SQLite→JSON。Phase 7 再加每日 schedule cron 與產物 commit。
+# 每日排程 + 手動觸發：抓取→SQLite→彙總 JSON→commit 產物（供公開 GitHub Pages）。
 on:
+  schedule:
+    - cron: '0 12 * * 1-5'   # 週一至五 12:00 UTC（20:00 台北，收盤後資料已備）
   workflow_dispatch:
     inputs:
       days:
@@ -12,13 +14,17 @@ on:
         description: '逗號分隔分點代碼 securities_trader_id（空=預設）'
         required: false
         default: ''
+      watchlist:
+        description: '逗號分隔追蹤股票代碼（空=預設）'
+        required: false
+        default: ''
       max_req:
         description: '每次執行抓取上限 (分點,日) 對數'
         required: false
         default: '2000'
 
 permissions:
-  contents: read          # Phase 1 只產 artifact，不 push（最小權限）
+  contents: write         # commit 彙總 JSON 產物到 repo（供公開 Pages）；原始明細仍只在 cache
 
 concurrency:
   group: collector
@@ -51,8 +57,12 @@ jobs:
       - name: Run collector
         env:
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}   # 需先於 repo 設定 secret
-          MAX_REQ_PER_RUN: ${{ inputs.max_req }}
-        run: python collector.py --days "${{ inputs.days }}" --branches "${{ inputs.branches }}"
+          MAX_REQ_PER_RUN: ${{ inputs.max_req || '2000' }}
+        run: >
+          python collector.py
+          --days "${{ inputs.days || '120' }}"
+          --branches "${{ inputs.branches }}"
+          --watchlist "${{ inputs.watchlist }}"
 
       - name: Upload data JSON (artifact)
         if: always()
@@ -61,3 +71,16 @@ jobs:
           name: collector-data
           path: data/*.json
           if-no-files-found: warn
+
+      - name: Commit 彙總 JSON 產物（供公開 Pages）
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/*.json
+          if git diff --quiet --cached; then
+            echo "彙總資料無變更，略過 commit"
+          else
+            git commit -m "chore(data): 每日更新彙總 JSON [skip ci]"
+            git push
+          fi
