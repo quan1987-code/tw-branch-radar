@@ -1,7 +1,7 @@
 # PLAN.md — tw-branch-radar 台股分點雷達
 
 > 本檔為進度主檔。每完成一段即更新「進度追蹤」勾選並 commit+push（雲端環境：存檔＝commit+push）。
-> Session 開頭先讀本檔續作。狀態：**Phase 1 三次實跑逐一釐清 FinMind 分點取法：整日物件需 Sponsor Pro；SecIdAgg 須「股+分點」兩者（對排行無用）；非彙總 `TaiwanStockTradingDailyReport` 以 `(securities_trader_id, date)` 查詢在 Sponsor 可用且可逐筆精算（＝使用者原偏好口徑）。已改用此法，程式改寫＋離線測試通過；待第四次 Actions 實跑驗收。Sponsor 上限實測=6000/hr。**
+> Session 開頭先讀本檔續作。狀態：**Phase 1 ✅ 完成（Actions 實跑驗收通過，run #5 冷跑抓 3 交易日、run #6 熱跑增量零重抓）。分點取法定案：非彙總 `TaiwanStockTradingDailyReport` 以 `(securities_trader_id, date)` 查詢、逐筆精算（整日物件需 Sponsor Pro、SecIdAgg 須股+分點兩者皆不合用）。Sponsor 上限實測=6000/hr；buy/sell 確認為股數、量級合理。下一步：Phase 2（增量+交易日曆+120 日回補+多分點）。**
 
 ---
 
@@ -126,7 +126,9 @@
 - [x] 整日物件 `use_object` 層級＝**需 Sponsor Pro**（實跑回 `400 "update your user level"`）。
 - [x] `TaiwanStockTradingDailyReportSecIdAgg`：Sponsor 可用但**須「股+分點」兩者**（先後回 `securities_trader_id can't be none`、`data_id can't be none`）→ 對排行不合用，改用非彙總報表。
 - [x] `TaiwanSecuritiesTraderInfo` 於 Sponsor **可用**（run #4 回分點清單，如 075T/087T/1020…）；Phase 3 全市場列舉可用它。
-- [ ] 非彙總 `TaiwanStockTradingDailyReport` 以 `(securities_trader_id, date)` 查詢在 Sponsor 的實跑確認（第四次 run；官方測試實例佐證應可用）。
+- [x] 非彙總 `TaiwanStockTradingDailyReport` 以 `(securities_trader_id, date)` 查詢在 Sponsor **可用**（run #5/#6 實跑成功，欄位 `date,stock_id,securities_trader_id,securities_trader,price,buy,sell` 逐字吻合；buy/sell 為股數、量級合理）。
+- [ ] 抽查 2026-07-03 聯發科(2454) 分點1020 淨買超≈1.2 億（隱含均價偏高，Phase 3 對照當日 close 確認無異常）。
+- [ ] Phase 3 門檻檢討：活躍分點(如 1020)單股單日淨買超常達數千萬~億，500 萬門檻可能偏低、事件過多——Phase 3 視分佈微調（四參數仍可調）。
 - [ ] 非彙總報表逐 (分點,日) 在全市場規模的請求數/耗時（Phase 2/3；6000/hr 下 ~千分點×120日需分批回補）。
 - [ ] `TaiwanStockPrice`／`TaiwanStockTotalReturnIndex` 是否 Sponsor 可取。
 - [ ] TWSE FMTQIK 回傳 JSON 的實際欄位鍵名與型別（Phase 5 實測對映）。
@@ -136,7 +138,7 @@
 
 ## 進度追蹤
 - [x] Phase 0 資料查證（本檔資料清單）
-- [~] Phase 1 最小垂直切片（首次實跑證整日物件需 Pro→改 SecIdAgg；程式改寫＋離線測試通過；**待再次 Actions 實跑驗收**）
+- [x] Phase 1 最小垂直切片 ✅（Actions run #5 冷跑抓 07-01/02/03 共 5007/4473/5626 列、run #6 熱跑增量零重抓；印出 api 上限=6000；輸出 data/phase1_sample.json top50；單次 <15 分；三次失敗迭代已釐清正確 dataset 取法）
 - [ ] Phase 2 增量 + 交易日曆 + 120 日回補
 - [ ] Phase 3 功能 A 勝率排行
 - [ ] Phase 4 功能 B 鉅額看板
