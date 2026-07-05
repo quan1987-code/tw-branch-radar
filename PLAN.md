@@ -1,7 +1,7 @@
 # PLAN.md — tw-branch-radar 台股分點雷達
 
 > 本檔為進度主檔。每完成一段即更新「進度追蹤」勾選並 commit+push（雲端環境：存檔＝commit+push）。
-> Session 開頭先讀本檔續作。狀態：**規劃階段（Phase 0 已執行，等使用者確認後才進 Phase 1）**。
+> Session 開頭先讀本檔續作。狀態：**規劃完成，決定已確認（見「已確認決定」），待使用者按下 Phase 1 起跑**。
 
 ---
 
@@ -86,8 +86,13 @@
 - **驗收**：(1) DB 覆蓋 120 交易日；(2) 二次執行零重抓（log 顯示 skip）；(3) 單次 Actions < 15 分；(4) DB 不進 repo（.gitignore 驗證）。
 
 ### Phase 3 — 功能 A：勝率分點排行
-- **做法**：四參數常數化（`LOOKBACK_DAYS=120`／`EVENT_MIN_AMOUNT=5_000_000`／`HOLD_DAYS=5`／`MIN_EVENTS=10`）。事件抽取：某 (分點,股,日) 淨買超金額 ≥ 500 萬計 1 次事件；以 `TaiwanStockPrice` `close` 判定「事件日+5 交易日 close > 事件日 close」為勝；每分點事件數 ≥ 10 才列入；勝率＝勝/事件。近 5 交易日未到期事件標 pending 不計。輸出 `data/ranking.json`。
-- **驗收**：(1) 排行可重現；(2) 改四參數任一，輸出隨之變動；(3) 附**一筆手算驗證樣本**（單一分點單一事件的金額與+5日勝負人工核對相符）；(4) 事件數 <10 的分點確實被排除。
+- **做法**：四參數常數化（`LOOKBACK_DAYS=120`／`EVENT_MIN_AMOUNT=5_000_000`／`HOLD_DAYS=5`／`MIN_EVENTS=10`）。
+  - **金額口徑（已確認）**：逐筆精算 `淨買超金額 = Σ(buy×price) − Σ(sell×price)`，資料取自 Phase 1 落地的 `TaiwanStockTradingDailyReport` 整日物件（精度與請求數皆優於 SecIdAgg 均價估算）。
+  - 事件抽取：某 (分點,股,日) 淨買超金額 ≥ 500 萬計 1 次事件；以 `TaiwanStockPrice` `close` 判定「事件日+5 交易日 close > 事件日 close」為勝；每分點事件數 ≥ 10 才列入；近 5 交易日未到期事件標 pending 不計。
+  - **排序（已確認升級）**：不用原始勝率排序，改用**勝率的 Wilson 分數下界**（95%）排序，並在輸出一律帶 `events`(N)、`wins`、`win_rate`、`wilson_lb`，避免「10 場 8 勝」小樣本灌水贏過「200 場 62%」。門檻值四參數不變。
+  - 輸出 `data/ranking.json`。
+- **v1.1 建議（先不做，記錄待議）**：勝負改「相對加權指數的超額報酬」（事件後 5 日個股報酬 > 同期大盤報酬才算勝），以剔除多頭市場的 beta 假象；門檻可評估改「佔當日成交額 X%」相對值以濾除權值股雜訊。
+- **驗收**：(1) 排行可重現；(2) 改四參數任一，輸出隨之變動；(3) 附**一筆手算驗證樣本**（單一分點單一事件的金額與+5日勝負人工核對相符）；(4) 事件數 <10 的分點確實被排除；(5) 輸出每列含 N 且排序依 `wilson_lb`（同勝率不同 N 者順序正確）。
 
 ### Phase 4 — 功能 B：鉅額交易看板
 - **做法**：`TaiwanStockBlockTrade` 抓當日鉅額逐筆；對當日 `TaiwanStockPrice` `close` 算折溢價％＝(price−close)/close；輸出 `data/block_trade.json`（列表＋折溢價，含買賣別 `trade_type`）。
@@ -102,17 +107,17 @@
 - **驗收**：(1) 手機視圖三區塊皆可讀；(2) 純讀本地 JSON 即可渲染（無後端）；(3) 頁尾來源標示齊全；(4) JSON 缺檔時有降級提示不白屏。
 
 ### Phase 7 — GitHub Actions 每日排程 + 部署
-- **做法**：每日 cron；`FINMIND_TOKEN` 走 secrets；actions/cache 保存 SQLite；每日產 `data/*.json` 並 commit；部署（Pages 或私有，見「需確認決定」）。
+- **做法**：每日 cron；`FINMIND_TOKEN` 走 secrets；actions/cache 保存 SQLite；每日產 `data/*.json` 並 commit；**部署走公開 GitHub Pages（已確認）**——repo 需 public，`data/*.json` 與 `index.html` 對外可見，故禁區（token 不外洩、原始逐筆明細不進 repo）更須嚴守；公開個人面板屬 FinMind 授權之個人非商業用途，頁尾維持來源標示。
 - **驗收**：(1) 排程綠燈且產物更新；(2) 單次 < 15 分；(3) TOKEN 不外洩（掃 commit／log）；(4) 原始明細未進 repo；(5) 授權標示（FinMind、非商業）在頁尾與 README。
 
 ---
 
-## 需使用者確認的決定
-1. **勝率四參數是否調整**：預設 `120 交易日／單日淨買超 ≥ 500 萬／持有 5 交易日／事件數 ≥ 10`。是否照舊？（皆已常數化，可隨時改）
-2. **部署走公開 GitHub Pages 或維持私有**：影響是否對外可見與 CI 設定。
-3. **勝率排行的個股與分點涵蓋範圍**：全市場（分點整日物件天然涵蓋全市場，但 +5 日 close 需對應個股 120 日 `TaiwanStockPrice`，全市場資料量較大）vs 指定追蹤清單／高流動性子集。建議：勝率用全市場，功能 C 追蹤清單另給一份小清單。
-4. **勝率「買超金額」計算口徑**：用 `TaiwanStockTradingDailyReport` 逐筆精算 Σ(buy×price)−Σ(sell×price)（建議，精確）vs 用 `TaiwanStockTradingDailyReportSecIdAgg` 均價估算（資料量小、支援日期範圍，但為均價近似）。
-5. **大盤替代來源確認**：因 FinMind 無現成大盤價量，改用 **TWSE FMTQIK**（免 token）。確認採用。
+## 已確認決定（本輪）
+1. **勝率四參數**：✔ 維持預設 `120 交易日／單日淨買超 ≥ 500 萬／持有 5 交易日／事件數 ≥ 10`（皆常數化可隨時改）。另採兩項「不改參數、只改排序/勝負口徑」的升級：排序改 Wilson 下界＋一律顯示事件數 N（見 Phase 3）；「超額報酬」勝負與相對成交額門檻列 v1.1 待議。
+2. **部署**：✔ 公開 GitHub Pages（repo 需 public；禁區更須嚴守，見 Phase 7）。
+3. **勝率「買超金額」計算口徑**：✔ 逐筆精算 `Σ(buy×price)−Σ(sell×price)`（精度與請求數皆優於 SecIdAgg 均價估算；見 Phase 3）。
+4. **勝率涵蓋範圍**：建議全市場（分點整日物件天然涵蓋），功能 C 追蹤清單另給小清單——**待使用者提供追蹤清單內容**（可 Phase 5 前再定，不擋 Phase 1）。
+5. **大盤替代來源**：✔ 採 TWSE FMTQIK（免 token）取代 FinMind 缺項。
 
 ---
 
