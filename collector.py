@@ -55,10 +55,20 @@ EXPECTED_COLS = {
     "price", "buy", "sell",
 }
 
+# --- Phase 4/5：鉅額交易看板 + 成交資訊 ---
+# 追蹤清單預設用真實大型股（2303/2603/3008/2330 皆出現於 run #9 實際資料）；可 --watchlist 覆寫
+DEFAULT_WATCHLIST = ["2330", "2317", "2454", "2303", "2603", "3008", "2891"]
+BLOCK_DAYS = 5                # 鉅額看板取最近幾個交易日
+BLOCK_TOP_N = 50             # 鉅額看板輸出上限
+# TWSE 每日市場成交資訊（大盤：發行量加權股價指數收盤＋成交金額）——FinMind 無現成大盤價量
+TWSE_FMTQIK_URL = "https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK"
+
 DB_PATH = os.environ.get("BRANCH_DB", os.path.join(".cache", "branch.db"))
 DATA_DIR = os.environ.get("DATA_DIR", "data")
 OUTPUT_JSON = os.path.join(DATA_DIR, "status.json")
 RANKING_JSON = os.path.join(DATA_DIR, "ranking.json")
+BLOCK_JSON = os.path.join(DATA_DIR, "block_trade.json")
+MARKET_JSON = os.path.join(DATA_DIR, "market.json")
 
 
 # ============ FinMind ============
@@ -122,6 +132,16 @@ def init_db(conn: sqlite3.Connection) -> None:
             end_date   TEXT,
             fetched_at TEXT
         );
+        -- 鉅額交易（Phase 4；來源 TaiwanStockBlockTrade）
+        CREATE TABLE IF NOT EXISTS block_trade(
+            date          TEXT,
+            stock_id      TEXT,
+            trade_type    TEXT,
+            price         REAL,
+            volume        INTEGER,
+            trading_money INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_block_date ON block_trade(date);
         """
     )
     conn.commit()
@@ -447,6 +467,139 @@ def export_ranking(result: dict, api_info: dict) -> None:
               f"(勝{r['wins']}/{r['evaluable']}，事件{r['events']}，pending{r['pending']})")
 
 
+# ============ Phase 4：鉅額交易看板 ============
+BLOCK_COLS = ["date", "stock_id", "trade_type", "price", "volume", "trading_money"]
+
+
+def _df_to_block_rows(df) -> list:
+    if df is None or not len(df):
+        return []
+    missing = set(BLOCK_COLS) - set(df.columns)
+    if missing:
+        raise SystemExit(f"鉅額欄位缺 {sorted(missing)}；實際={sorted(df.columns)}")
+    return [tuple(r) for r in df[BLOCK_COLS].itertuples(index=False, name=None)]
+
+
+def fetch_block_trades(dl: DataLoader, start: str, end: str, watchlist: list[str]) -> list:
+    """抓鉅額交易：先試全市場（空 stock_id）；被拒或空則退回逐股查追蹤清單。"""
+    try:
+        df = dl.taiwan_stock_block_trade(start_date=start, end_date=end, timeout=REQ_TIMEOUT)
+        rows = _df_to_block_rows(df)
+        if rows:
+            print(f"[block] 全市場查詢成功 {len(rows)} 筆（{start}~{end}）；欄位={sorted(df.columns)}")
+            return rows
+        print("[block] 全市場查詢回空，改逐股查追蹤清單")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[block] 全市場查詢失敗（{exc}）；改逐股查追蹤清單")
+    rows: list = []
+    for s in watchlist:
+        try:
+            df = dl.taiwan_stock_block_trade(stock_id=s, start_date=start, end_date=end,
+                                             timeout=REQ_TIMEOUT)
+            rows += _df_to_block_rows(df)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[block] {s} 查詢失敗：{exc}")
+    print(f"[block] 追蹤清單查詢得 {len(rows)} 筆")
+    return rows
+
+
+def store_block_trades(conn: sqlite3.Connection, days: list[str], rows: list) -> None:
+    with conn:
+        conn.executemany("DELETE FROM block_trade WHERE date = ?", [(d,) for d in days])
+        conn.executemany(
+            "INSERT INTO block_trade(date, stock_id, trade_type, price, volume, trading_money)"
+            " VALUES (?, ?, ?, ?, ?, ?)", rows)
+
+
+def export_block(conn: sqlite3.Connection, days: list[str], api_info: dict) -> None:
+    ph = ",".join("?" * len(days))
+    rows = conn.execute(f"""
+        SELECT b.date, b.stock_id, b.trade_type, b.price, b.volume, b.trading_money, p.close
+        FROM block_trade b
+        LEFT JOIN stock_price p ON p.date = b.date AND p.stock_id = b.stock_id
+        WHERE b.date IN ({ph})
+        ORDER BY b.date DESC, b.trading_money DESC
+        LIMIT ?
+    """, (*days, BLOCK_TOP_N)).fetchall()
+    items = []
+    for r in rows:
+        close = r[6]
+        prem = round((r[3] - close) / close, 4) if close else None
+        items.append({"date": r[0], "stock_id": r[1], "trade_type": r[2],
+                      "price": round(r[3], 4), "volume": int(r[4] or 0),
+                      "trading_money": int(r[5] or 0),
+                      "close": round(close, 4) if close else None,
+                      "premium_discount": prem})
+    payload = {
+        "phase": 4, "generated_at": datetime.now(timezone.utc).isoformat(),
+        "days": days, "count": len(items),
+        "premium_note": "折溢價 = (鉅額成交價 − 當日收盤) / 當日收盤（正=溢價）",
+        "block_trades": items, "source": "FinMind",
+    }
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(BLOCK_JSON, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+    print(f"[block] 寫出 {BLOCK_JSON}；{len(items)} 筆（{days[0]}~{days[-1]}）")
+
+
+# ============ Phase 5：成交資訊（大盤 + 追蹤清單） ============
+def fetch_twse_fmtqik() -> dict | None:
+    """TWSE 每日市場成交資訊（大盤：加權指數收盤＋成交金額）。沙盒 egress 擋、Actions 可達。"""
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            TWSE_FMTQIK_URL, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=REQ_TIMEOUT) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[market] TWSE FMTQIK 取得失敗：{exc}")
+        return None
+    if not isinstance(data, list) or not data:
+        print(f"[market] TWSE FMTQIK 回傳非預期：{type(data)}")
+        return None
+    latest = data[-1]  # 最新一筆
+    print(f"[market] TWSE FMTQIK 欄位鍵={list(latest.keys())}；筆數={len(data)}")
+    return latest
+
+
+def export_market(dl: DataLoader, conn: sqlite3.Connection, watchlist: list[str],
+                  trading_days: list[str], api_info: dict) -> None:
+    last = trading_days[-1]
+    start = trading_days[max(0, len(trading_days) - 5)]
+    # 追蹤清單：抓每檔近幾日 TaiwanStockPrice，取最新一日完整價量
+    quotes = []
+    for s in watchlist:
+        try:
+            df = dl.taiwan_stock_daily(stock_id=s, start_date=start, end_date=last,
+                                       timeout=REQ_TIMEOUT)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[market] {s} 價量查詢失敗：{exc}")
+            continue
+        if df is None or not len(df):
+            continue
+        row = df.sort_values("date").iloc[-1]
+        quotes.append({
+            "stock_id": s, "date": str(row["date"])[:10],
+            "open": float(row.get("open", 0) or 0), "max": float(row.get("max", 0) or 0),
+            "min": float(row.get("min", 0) or 0), "close": float(row.get("close", 0) or 0),
+            "spread": float(row.get("spread", 0) or 0),
+            "trading_volume": int(row.get("Trading_Volume", 0) or 0),
+            "trading_money": int(row.get("Trading_money", 0) or 0),
+        })
+    market = fetch_twse_fmtqik()
+    payload = {
+        "phase": 5, "generated_at": datetime.now(timezone.utc).isoformat(),
+        "as_of": last,
+        "market_twse_fmtqik": market,  # 原始鍵保留（Phase 6 依實測鍵渲染）
+        "watchlist": watchlist, "quotes": quotes,
+        "source": "FinMind + TWSE",
+    }
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(MARKET_JSON, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+    print(f"[market] 寫出 {MARKET_JSON}；追蹤 {len(quotes)} 檔，大盤={'有' if market else '無'}")
+
+
 # ============ main ============
 def main() -> None:
     parser = argparse.ArgumentParser(description="tw-branch-radar collector")
@@ -454,11 +607,14 @@ def main() -> None:
     parser.add_argument("--anchor", default="", help="錨定日 YYYY-MM-DD（預設今天）")
     parser.add_argument("--branches", default="",
                         help="逗號分隔分點代碼 securities_trader_id（預設 DEFAULT_BRANCHES）")
+    parser.add_argument("--watchlist", default="",
+                        help="逗號分隔追蹤股票代碼（預設 DEFAULT_WATCHLIST）")
     args = parser.parse_args()
 
     anchor = date.fromisoformat(args.anchor) if args.anchor else date.today()
     override = [s.strip() for s in args.branches.split(",") if s.strip()]
     branches = override or list(DEFAULT_BRANCHES)
+    watchlist = [s.strip() for s in args.watchlist.split(",") if s.strip()] or list(DEFAULT_WATCHLIST)
     print(f"=== tw-branch-radar collector（逐筆精算）==="
           f"（錨定日={anchor}，分點={branches}，目標 {args.days} 交易日，本次上限 {MAX_REQ_PER_RUN} 對）")
 
@@ -486,6 +642,18 @@ def main() -> None:
             export_ranking(result, api_info)
         else:
             print(f"[ranking] 分點資料尚未完整回補（剩 {progress['remaining']} 對），本次略過排行")
+
+        # Phase 4：鉅額交易看板（最近 BLOCK_DAYS 交易日）
+        block_days = trading_days[-BLOCK_DAYS:]
+        block_rows = fetch_block_trades(dl, block_days[0], block_days[-1], watchlist)
+        store_block_trades(conn, block_days, block_rows)
+        block_stocks = sorted({r[1] for r in block_rows})
+        if block_stocks:
+            ensure_prices(dl, conn, block_stocks, block_days[0], block_days[-1], MAX_REQ_PER_RUN)
+        export_block(conn, block_days, api_info)
+
+        # Phase 5：成交資訊（大盤 TWSE FMTQIK + 追蹤清單價量）
+        export_market(dl, conn, watchlist, trading_days, api_info)
     finally:
         conn.close()
     print("=== 完成 ===")
