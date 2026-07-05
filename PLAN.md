@@ -1,7 +1,7 @@
 # PLAN.md — tw-branch-radar 台股分點雷達
 
 > 本檔為進度主檔。每完成一段即更新「進度追蹤」勾選並 commit+push（雲端環境：存檔＝commit+push）。
-> Session 開頭先讀本檔續作。狀態：**Phase 1 ✅ 完成（Actions 實跑驗收通過，run #5 冷跑抓 3 交易日、run #6 熱跑增量零重抓）。分點取法定案：非彙總 `TaiwanStockTradingDailyReport` 以 `(securities_trader_id, date)` 查詢、逐筆精算（整日物件需 Sponsor Pro、SecIdAgg 須股+分點兩者皆不合用）。Sponsor 上限實測=6000/hr；buy/sell 確認為股數、量級合理。下一步：Phase 2（增量+交易日曆+120 日回補+多分點）。**
+> Session 開頭先讀本檔續作。狀態：**Phase 1、Phase 2 ✅ 完成（Actions 實跑驗收通過）。分點取法定案：非彙總 `TaiwanStockTradingDailyReport` 以 `(securities_trader_id, date)` 查詢、逐筆精算；`TaiwanStockTradingDate` 建交易日曆；backfill 分批可續跑（MAX_REQ_PER_RUN）。run #7 對分點 1020 回補 120 交易日全涵蓋（cache 264KB→11MB、6 分鐘）、run #8 重跑增量零重抓。Sponsor 上限=6000/hr；buy/sell 為股數、量級合理。下一步：Phase 3（勝率分點排行：事件抽取＋+5 日 close＋Wilson 排序；含決定分點宇宙）。**
 
 ---
 
@@ -139,7 +139,7 @@
 ## 進度追蹤
 - [x] Phase 0 資料查證（本檔資料清單）
 - [x] Phase 1 最小垂直切片 ✅（Actions run #5 冷跑抓 07-01/02/03 共 5007/4473/5626 列、run #6 熱跑增量零重抓；印出 api 上限=6000；輸出 data/phase1_sample.json top50；單次 <15 分；三次失敗迭代已釐清正確 dataset 取法）
-- [ ] Phase 2 增量 + 交易日曆 + 120 日回補
+- [x] Phase 2 增量 + 交易日曆 + 120 日回補 ✅（run #7：`TaiwanStockTradingDate` 取 120 交易日、分點 1020 回補全涵蓋、6 分鐘 <15 分；run #8：重跑零重抓；分批續跑機制離線＋設計驗證）
 - [ ] Phase 3 功能 A 勝率排行
 - [ ] Phase 4 功能 B 鉅額看板
 - [ ] Phase 5 功能 C 成交資訊
