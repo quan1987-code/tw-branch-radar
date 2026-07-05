@@ -145,7 +145,7 @@
 - [x] Phase 4 功能 B 鉅額看板 ✅（run #10：全市場 41 筆＋折溢價，block_trade.json）
 - [x] Phase 5 功能 C 成交資訊 ✅（run #10：追蹤 7 檔價量＋TWSE 大盤，market.json）
 - [x] Phase 6 功能 D HTML 面板 ✅（index.html 單檔讀 4 JSON、手機優先、台股紅漲綠跌、缺檔降級＋內嵌示意；Playwright 實測渲染五區塊正常。真實資料待 Phase 7 commit 產物＋Pages）
-- [~] Phase 7 Actions 排程 + 部署（workflow 已加每日 cron 12:00 UTC＋contents:write＋commit data/*.json 步驟；待實跑驗證 commit 產物、使用者於 Settings 啟用公開 Pages(main)）
+- [~] Phase 7 Actions 排程 + 部署（每日 cron 12:00 UTC＋commit data/*.json **已實跑驗證**：run #11 bot commit「chore(data)」成功、真實 4 JSON 進 repo；面板讀真實資料渲染正常。**剩使用者動作**：Settings→Pages 啟用公開 Pages(main)＋合併分支到 main 讓 cron 生效）
 
 ---
 

@@ -143,9 +143,12 @@ function renderMarket(m){
   }else tiles.innerHTML=`<div class="empty">大盤資料待更新</div>`;
   const tb=$("#watch tbody");tb.innerHTML="";
   (m?.quotes||[]).forEach(q=>{
+    // FinMind spread 為「漲跌點數（元）」非百分比；漲跌幅% = spread / 前日收盤(=close-spread)
+    const prev=(q.close!=null&&q.spread!=null)?q.close-q.spread:null;
+    const pct=prev?q.spread/prev*100:null;
     tb.insertAdjacentHTML("beforeend",`<tr>
       <td>${q.stock_id}</td><td>${fmt(q.close,2)}</td>
-      <td class="${cls(q.spread)}">${sign(fmt(q.spread,2))}%</td>
+      <td class="${cls(q.spread)}">${pct==null?"—":sign(fmt(pct,2))+"%"}</td>
       <td class="mut">${fmt(q.open,2)}</td><td class="mut">${fmt(q.max,2)}</td><td class="mut">${fmt(q.min,2)}</td>
       <td>${lots(q.trading_volume)}</td></tr>`);
   });
