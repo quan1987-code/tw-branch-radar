@@ -278,6 +278,9 @@ def export_summary(conn: sqlite3.Connection, days: list[str], api_info: dict) ->
     with open(OUTPUT_JSON, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2)
     print(f"[output] 寫出 {OUTPUT_JSON}；top {len(top)} 筆，涵蓋 {days}")
+    for r in top[:5]:  # 印樣本供 log 檢視量級（確認 buy/sell 為股數、金額合理）
+        print(f"[sample] {r['date']} 分點{r['securities_trader_id']} 股{r['stock_id']} "
+              f"淨買超={r['net_amount']:,.0f} (買{r['buy_shares']:,}股/賣{r['sell_shares']:,}股)")
 
 
 # ============ main ============
