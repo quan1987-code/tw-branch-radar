@@ -1,0 +1,5 @@
+# tw-branch-radar 依賴
+# finmind 官方 client（v1.9.12，已驗證 dataset/欄位取自此版原始碼）
+# 會一併帶入 pandas<2.0.0、requests、pyarrow（整日物件為 parquet，需 pyarrow）
+# 注意：pandas<2 於 Python 3.11 有 manylinux wheel，免原始碼編譯（見 workflow 固定 3.11）
+finmind==1.9.12

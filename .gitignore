@@ -1,0 +1,16 @@
+# 禁區：原始逐筆分點明細只留 actions/cache，不進 repo
+.cache/
+*.db
+*.sqlite
+*.sqlite3
+*.parquet
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 本機暫存 / OS
+.DS_Store
+*.log

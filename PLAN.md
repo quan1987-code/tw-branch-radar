@@ -1,7 +1,7 @@
 # PLAN.md — tw-branch-radar 台股分點雷達
 
 > 本檔為進度主檔。每完成一段即更新「進度追蹤」勾選並 commit+push（雲端環境：存檔＝commit+push）。
-> Session 開頭先讀本檔續作。狀態：**規劃完成，決定已確認（見「已確認決定」），待使用者按下 Phase 1 起跑**。
+> Session 開頭先讀本檔續作。狀態：**Phase 1 程式已完成並通過離線邏輯測試；待使用者於 repo 設定 `FINMIND_TOKEN` secret 後，手動觸發 Actions 實跑以完成 Phase 1 驗收**。
 
 ---
 
@@ -132,7 +132,7 @@
 
 ## 進度追蹤
 - [x] Phase 0 資料查證（本檔資料清單）
-- [ ] Phase 1 最小垂直切片
+- [~] Phase 1 最小垂直切片（程式＋workflow 完成、離線邏輯測試通過；**待 Actions 實跑驗收**：DB 3 日／重跑不重抓／JSON 淨買超／印上限／<15 分）
 - [ ] Phase 2 增量 + 交易日曆 + 120 日回補
 - [ ] Phase 3 功能 A 勝率排行
 - [ ] Phase 4 功能 B 鉅額看板
