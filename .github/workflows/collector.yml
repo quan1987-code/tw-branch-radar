@@ -1,9 +1,21 @@
-name: collector (Phase 1)
+name: collector
 
-# Phase 1：手動觸發，證明整條管線通（抓取→SQLite→JSON）。
-# Phase 7 再加每日 schedule cron 與產物 commit。
+# 手動觸發：抓取→SQLite→JSON。Phase 7 再加每日 schedule cron 與產物 commit。
 on:
   workflow_dispatch:
+    inputs:
+      days:
+        description: '回補最近幾個交易日'
+        required: false
+        default: '120'
+      branches:
+        description: '逗號分隔分點代碼 securities_trader_id（空=預設）'
+        required: false
+        default: ''
+      max_req:
+        description: '每次執行抓取上限 (分點,日) 對數'
+        required: false
+        default: '2000'
 
 permissions:
   contents: read          # Phase 1 只產 artifact，不 push（最小權限）
@@ -39,12 +51,13 @@ jobs:
       - name: Run collector
         env:
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}   # 需先於 repo 設定 secret
-        run: python collector.py
+          MAX_REQ_PER_RUN: ${{ inputs.max_req }}
+        run: python collector.py --days "${{ inputs.days }}" --branches "${{ inputs.branches }}"
 
       - name: Upload data JSON (artifact)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase1-data
+          name: collector-data
           path: data/*.json
           if-no-files-found: warn

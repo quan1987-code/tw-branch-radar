@@ -1,7 +1,7 @@
 # PLAN.md — tw-branch-radar 台股分點雷達
 
 > 本檔為進度主檔。每完成一段即更新「進度追蹤」勾選並 commit+push（雲端環境：存檔＝commit+push）。
-> Session 開頭先讀本檔續作。狀態：**Phase 1 程式已完成並通過離線邏輯測試；待使用者於 repo 設定 `FINMIND_TOKEN` secret 後，手動觸發 Actions 實跑以完成 Phase 1 驗收**。
+> Session 開頭先讀本檔續作。狀態：**Phase 1、2、3A ✅ 完成（Actions 實跑驗收通過）。分點取法：非彙總 `TaiwanStockTradingDailyReport` 逐 (分點,日) 逐筆精算；`TaiwanStockTradingDate` 日曆；backfill 可續跑。Phase 3A 勝率演算法（事件抽取＋`TaiwanStockPrice` +5 日 close 判勝＋Wilson 排序＋pending）run #9 於真實資料驗證：合庫(1020) 事件 3693、可評 3564、勝率 54.8%、Wilson 0.532。`TaiwanStockPrice` 確認 Sponsor 可用。下一步 = Phase 3B：**決定分點宇宙規模（決定 #4）**才能有多分點可比的真排行——全市場(~20–40hr 分批回補) vs 活躍分點子集。**
 
 ---
 
@@ -30,13 +30,13 @@
 #### 1. 券商分點每日買賣明細（勝率計算底層）
 - **Dataset**：`TaiwanStockTradingDailyReport`（當日券商分點表）
 - **文件**：https://finmind.github.io/tutor/TaiwanMarket/Chip/
-- **所需層級**：整日一次下載（`use_object=True`，signed-URL parquet 整日全券商×全股）屬**付費／Sponsor 專屬**功能（WebSearch 佐證「一次取回某日全部股票需付費會員」）。逐股／逐分點查詢的免費層級細節＝**未查證 TODO**。本專案有 Sponsor，採整日下載。
+- **所需層級（已由實跑證實）**：(a) 整日物件 `use_object` **需 Sponsor Pro**（回 400 "update your user level"）；(b) `TaiwanStockTradingDailyReportSecIdAgg` 在 Sponsor 可用但**須「股+分點」兩者**（只給其一被拒 `... can't be none`），對全市場排行不合用；(c) **非彙總 `TaiwanStockTradingDailyReport` 以 `(securities_trader_id, date)` 查詢在 Sponsor 可用**（官方測試 tests/data/test_data_loader.py 有此實例），回該分點當日各股逐筆買賣。**本專案採 (c) 逐筆精算**。Sponsor 每小時上限實測=6000。
 - **參數**：`stock_id`／`securities_trader_id`／`date`（單日；內部 start=end=date）；或 `use_object=True` 直接抓整日物件。
 - **欄位（逐字）**：`date`、`stock_id`、`securities_trader_id`（券商代碼）、`securities_trader`（券商名稱）、`price`（成交價）、`buy`（買進股數）、`sell`（賣出股數）。
-- **重要口徑**：同一 (分點,股,日) 會有多列（不同成交價）。單日某分點對某股「淨買超**金額**」＝ Σ(buy×price) − Σ(sell×price)。
+- **重要口徑**：以 (c) 非彙總報表查詢，同一 (分點,股,日) 有多列（不同成交價），**逐筆精算**淨買超金額＝ Σ(buy×price) − Σ(sell×price)（＝使用者原偏好、較準口徑，且在 Sponsor 可用；整日物件才需 Pro）。
 - **輔助 dataset**：
   - `TaiwanSecuritiesTraderInfo`（券商代碼↔名稱對照；欄位 `securities_trader_id,securities_trader,date,address,phone`）。
-  - `TaiwanStockTradingDailyReportSecIdAgg`（分點統計表，已預彙總、支援日期範圍；欄位 `date,stock_id,securities_trader_id,securities_trader,buy_volume,sell_volume,buy_price(買進均價),sell_price(賣出均價)`）——為 Phase 3 金額口徑的備選（見「需確認決定」）。
+  - `TaiwanStockTradingDailyReportSecIdAgg`（分點統計表，已預彙總、支援日期範圍；欄位 `date,stock_id,securities_trader_id,securities_trader,buy_volume,sell_volume,buy_price(買進均價),sell_price(賣出均價)`）——**本專案採用之主來源**。實跑證實：**必須以 `securities_trader_id`（分點代碼）查詢**（只給 stock_id 會被拒 `securities_trader_id can't be none`），故逐分點抓；分點代碼清單取自 `TaiwanSecuritiesTraderInfo`。於 Sponsor 可用（已實跑證實）。
 
 #### 2. 鉅額交易（盤後鉅額買賣）
 - **Dataset**：`TaiwanStockBlockTrade`（鉅額交易日成交資訊，逐筆）
@@ -77,17 +77,17 @@
 ## 分段規劃（7 段，每段有可判定驗收）
 
 ### Phase 1 — 最小垂直切片（單一 dataset，證明整條管線通）★必為最小切片
-- **做法**：只用 `TaiwanStockTradingDailyReport`（整日物件 `use_object`）抓**3 個交易日** → 落地 SQLite（schema：raw 分點列）→ 以 actions/cache 保存 DB → 產出**一個 JSON**（當日各分點對個股「淨買超金額」彙總 top N）。同時呼叫 `user_info` 印出 `api_request_limit`（實測 Sponsor 上限）。
-- **選此 dataset 理由**：它是勝率旗艦功能的骨幹，也是最大技術風險（Sponsor 整日物件、資料量、15 分預算），最該最早證明。
-- **驗收**：(1) DB 有 3 個交易日資料；(2) 重跑同日不重抓；(3) 輸出 JSON 內含 (分點,股,日,淨買超金額)；(4) log 印出實際每小時上限數字；(5) 單次執行 < 15 分。同時把「關鍵指令」補進 CLAUDE.md。
+- **做法**：只用 `TaiwanStockTradingDailyReport`（非彙總），對數個分點（`PHASE1_BRANCHES` 預設 `["1020"]`，官方測試之真實代碼；可 `--branches` 覆寫）以 `(securities_trader_id, date)` 逐日查近 3 個交易日（以 branches[0] 偵測交易日、跳過假日）→ 落地 SQLite（`branch_daily`）→ actions/cache 保存 → 產出**一個 JSON**（逐筆精算 Σ(buy×price)−Σ(sell×price) top N）。同時印 `api_request_limit`（實測=6000）。
+- **選此 dataset 理由**：分點是勝率旗艦功能骨幹；SecIdAgg 是 Sponsor 可行且省請求的路徑（逐股一次抓日期範圍）。整日物件因需 Sponsor Pro 已排除。
+- **驗收**：(1) DB 有 3 個交易日資料；(2) 重跑不重抓（整窗已涵蓋則 skip，log 顯示）；(3) 輸出 JSON 內含 (分點,股,日,淨買超金額)；(4) log 印出實際每小時上限數字；(5) 單次執行 < 15 分；(6) 確認 SecIdAgg 於 Sponsor 可用（若層級不足會明確報 user level 錯誤）。「關鍵指令」已補進 CLAUDE.md。
 
 ### Phase 2 — 增量抓取 + 交易日曆 + 120 日回補
-- **做法**：用 `TaiwanStockTradingDate` 建交易日曆；實作「只補缺日」增量；DB schema 定稿（分點 raw + 交易日曆表）；回補最近 **120 交易日**分點資料。
-- **驗收**：(1) DB 覆蓋 120 交易日；(2) 二次執行零重抓（log 顯示 skip）；(3) 單次 Actions < 15 分；(4) DB 不進 repo（.gitignore 驗證）。
+- **做法**：用 `TaiwanStockTradingDate(start,end)`（回單欄 `date` 交易日清單）取代 Phase 1 的探測法，取最近 **120 個交易日**；對 branches × 120 交易日補齊缺的 (分點,日)（`fetched_keys` 判缺、只補缺、空日也標記避免重查）；`branch_daily` schema 沿用。加每次執行請求上限 `MAX_REQ_PER_RUN`（env 可調，安全界：達上限則本次停、下次續跑——為 Phase 3 大宇宙分批回補鋪路）。小宇宙（預設 1020）120 日≈120 請求，單次可完成。輸出 `data/phase2_status.json`（各分點涵蓋交易日數＋回補進度＋top 淨買超）。
+- **驗收**：(1) DB 覆蓋 120 交易日（JSON/log 顯示）；(2) 二次執行零重抓（log 全 skip）；(3) 單次 Actions < 15 分；(4) DB 不進 repo；(5) 交易日曆來自 `TaiwanStockTradingDate`（非探測）。
 
 ### Phase 3 — 功能 A：勝率分點排行
 - **做法**：四參數常數化（`LOOKBACK_DAYS=120`／`EVENT_MIN_AMOUNT=5_000_000`／`HOLD_DAYS=5`／`MIN_EVENTS=10`）。
-  - **金額口徑（已確認）**：逐筆精算 `淨買超金額 = Σ(buy×price) − Σ(sell×price)`，資料取自 Phase 1 落地的 `TaiwanStockTradingDailyReport` 整日物件（精度與請求數皆優於 SecIdAgg 均價估算）。
+  - **金額口徑（決定 A，受層級限制）**：本專案 Sponsor 用 SecIdAgg 均價估算 `淨買超金額 = buy_volume×buy_price − sell_volume×sell_price`，資料取自 Phase 1/2 落地的 `branch_daily_agg`。逐筆精算 `Σ(buy×price)−Σ(sell×price)` 需 Sponsor Pro（升級後可無痛切換為更精確來源）。
   - 事件抽取：某 (分點,股,日) 淨買超金額 ≥ 500 萬計 1 次事件；以 `TaiwanStockPrice` `close` 判定「事件日+5 交易日 close > 事件日 close」為勝；每分點事件數 ≥ 10 才列入；近 5 交易日未到期事件標 pending 不計。
   - **排序（已確認升級）**：不用原始勝率排序，改用**勝率的 Wilson 分數下界**（95%）排序，並在輸出一律帶 `events`(N)、`wins`、`win_rate`、`wilson_lb`，避免「10 場 8 勝」小樣本灌水贏過「200 場 62%」。門檻值四參數不變。
   - 輸出 `data/ranking.json`。
@@ -115,26 +115,32 @@
 ## 已確認決定（本輪）
 1. **勝率四參數**：✔ 維持預設 `120 交易日／單日淨買超 ≥ 500 萬／持有 5 交易日／事件數 ≥ 10`（皆常數化可隨時改）。另採兩項「不改參數、只改排序/勝負口徑」的升級：排序改 Wilson 下界＋一律顯示事件數 N（見 Phase 3）；「超額報酬」勝負與相對成交額門檻列 v1.1 待議。
 2. **部署**：✔ 公開 GitHub Pages（repo 需 public；禁區更須嚴守，見 Phase 7）。
-3. **勝率「買超金額」計算口徑**：✔ 逐筆精算 `Σ(buy×price)−Σ(sell×price)`（精度與請求數皆優於 SecIdAgg 均價估算；見 Phase 3）。
-4. **勝率涵蓋範圍**：建議全市場（分點整日物件天然涵蓋），功能 C 追蹤清單另給小清單——**待使用者提供追蹤清單內容**（可 Phase 5 前再定，不擋 Phase 1）。
+3. **勝率「買超金額」計算口徑**：✔ **逐筆精算** `Σ(buy×price)−Σ(sell×price)`，資料取自非彙總 `TaiwanStockTradingDailyReport`（以分點+日期查詢，Sponsor 可用）。（決定 A 的 SecIdAgg 均價估算已被實跑推翻：SecIdAgg 須股+分點兩者、對排行不合用；逐筆精算反而在 Sponsor 可行，即使用者原偏好、較準。）
+4. **勝率涵蓋範圍**：SecIdAgg 為**逐分點**查詢（securities_trader_id），需列舉分點宇宙——分點清單取自 `TaiwanSecuritiesTraderInfo`（Phase 1 取樣 5 個分點，Phase 3 擴至全部分點）；功能 C 追蹤清單另給小清單——**待使用者提供追蹤清單內容**（Phase 5 前再定，不擋 Phase 1）。
 5. **大盤替代來源**：✔ 採 TWSE FMTQIK（免 token）取代 FinMind 缺項。
 
 ---
 
-## 未查證 TODO（Phase 1 於 Actions 實測補齊）
-- [ ] FinMind 各層級每小時請求上限精確值（`user_info.api_request_limit` 實測；WebSearch 概估：未註冊 300／免費+token 600／Sponsor 更高、另有新 Sponsor Pro）。
-- [ ] `TaiwanStockTradingDailyReport` 逐股／逐分點查詢的免費層級門檻（整日物件已確定需付費）。
-- [ ] `TaiwanStockPrice`／`TaiwanStockTotalReturnIndex` 是否免費層級可取。
+## 未查證 TODO（Actions 實測補齊）
+- [x] FinMind Sponsor 每小時上限＝**6000**（2026-07-05 `user_info.api_request_limit` 實測）。
+- [x] 整日物件 `use_object` 層級＝**需 Sponsor Pro**（實跑回 `400 "update your user level"`）。
+- [x] `TaiwanStockTradingDailyReportSecIdAgg`：Sponsor 可用但**須「股+分點」兩者**（先後回 `securities_trader_id can't be none`、`data_id can't be none`）→ 對排行不合用，改用非彙總報表。
+- [x] `TaiwanSecuritiesTraderInfo` 於 Sponsor **可用**（run #4 回分點清單，如 075T/087T/1020…）；Phase 3 全市場列舉可用它。
+- [x] 非彙總 `TaiwanStockTradingDailyReport` 以 `(securities_trader_id, date)` 查詢在 Sponsor **可用**（run #5/#6 實跑成功，欄位 `date,stock_id,securities_trader_id,securities_trader,price,buy,sell` 逐字吻合；buy/sell 為股數、量級合理）。
+- [ ] 抽查 2026-07-03 聯發科(2454) 分點1020 淨買超≈1.2 億（隱含均價偏高，Phase 3 對照當日 close 確認無異常）。
+- [ ] Phase 3 門檻檢討：活躍分點(如 1020)單股單日淨買超常達數千萬~億，500 萬門檻可能偏低、事件過多——Phase 3 視分佈微調（四參數仍可調）。
+- [ ] 非彙總報表逐 (分點,日) 在全市場規模的請求數/耗時（Phase 2/3；6000/hr 下 ~千分點×120日需分批回補）。
+- [x] `TaiwanStockPrice` 於 Sponsor **可用**（run #9 抓 443 檔成功，欄位含 close）。`TaiwanStockTotalReturnIndex` 待 Phase 5 確認。
 - [ ] TWSE FMTQIK 回傳 JSON 的實際欄位鍵名與型別（Phase 5 實測對映）。
-- [ ] 分點整日物件單日資料量與下載耗時（驗證 15 分預算）。
+- [ ] SecIdAgg 逐股查詢在全市場規模的請求數與耗時（驗證 15 分預算；Phase 2/3）。
 
 ---
 
 ## 進度追蹤
 - [x] Phase 0 資料查證（本檔資料清單）
-- [~] Phase 1 最小垂直切片（程式＋workflow 完成、離線邏輯測試通過；**待 Actions 實跑驗收**：DB 3 日／重跑不重抓／JSON 淨買超／印上限／<15 分）
-- [ ] Phase 2 增量 + 交易日曆 + 120 日回補
-- [ ] Phase 3 功能 A 勝率排行
+- [x] Phase 1 最小垂直切片 ✅（Actions run #5 冷跑抓 07-01/02/03 共 5007/4473/5626 列、run #6 熱跑增量零重抓；印出 api 上限=6000；輸出 data/phase1_sample.json top50；單次 <15 分；三次失敗迭代已釐清正確 dataset 取法）
+- [x] Phase 2 增量 + 交易日曆 + 120 日回補 ✅（run #7：`TaiwanStockTradingDate` 取 120 交易日、分點 1020 回補全涵蓋、6 分鐘 <15 分；run #8：重跑零重抓；分批續跑機制離線＋設計驗證）
+- [~] Phase 3 功能 A 勝率排行（演算法 3A ✅ run #9 真實驗證：合庫1020 勝率54.8%/Wilson0.532/事件3693；**待 3B 定分點宇宙規模**才有多分點真排行）
 - [ ] Phase 4 功能 B 鉅額看板
 - [ ] Phase 5 功能 C 成交資訊
 - [ ] Phase 6 功能 D HTML 面板
