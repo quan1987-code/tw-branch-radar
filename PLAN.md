@@ -1,7 +1,7 @@
 # PLAN.md — tw-branch-radar 台股分點雷達
 
 > 本檔為進度主檔。每完成一段即更新「進度追蹤」勾選並 commit+push（雲端環境：存檔＝commit+push）。
-> Session 開頭先讀本檔續作。狀態：**Phase 1 兩次實跑證實：(1) 整日物件需 Sponsor Pro；(2) SecIdAgg 在 Sponsor 可用，但必須以 `securities_trader_id`（分點代碼）查詢、不可用 stock_id。已改為逐分點（代碼由 `TaiwanSecuritiesTraderInfo` 動態取得），程式改寫＋離線測試通過；待第三次 Actions 實跑驗收。Sponsor 上限實測=6000/hr。**
+> Session 開頭先讀本檔續作。狀態：**Phase 1 三次實跑逐一釐清 FinMind 分點取法：整日物件需 Sponsor Pro；SecIdAgg 須「股+分點」兩者（對排行無用）；非彙總 `TaiwanStockTradingDailyReport` 以 `(securities_trader_id, date)` 查詢在 Sponsor 可用且可逐筆精算（＝使用者原偏好口徑）。已改用此法，程式改寫＋離線測試通過；待第四次 Actions 實跑驗收。Sponsor 上限實測=6000/hr。**
 
 ---
 
@@ -30,10 +30,10 @@
 #### 1. 券商分點每日買賣明細（勝率計算底層）
 - **Dataset**：`TaiwanStockTradingDailyReport`（當日券商分點表）
 - **文件**：https://finmind.github.io/tutor/TaiwanMarket/Chip/
-- **所需層級（已由實跑證實）**：整日一次下載（`use_object=True`，signed-URL parquet）**需 Sponsor Pro，非 Sponsor**——2026-07-05 實跑回 `status 400 / "Your level is sponsor. Please update your user level."`。本專案僅 Sponsor（實測每小時上限=6000），故**改採 `TaiwanStockTradingDailyReportSecIdAgg`（分點統計表，逐股日期範圍查詢，走一般 get_data 路徑）**，使用者已於決定 A 確認。SecIdAgg 於 Sponsor 是否可用＝下次實跑確認。
+- **所需層級（已由實跑證實）**：(a) 整日物件 `use_object` **需 Sponsor Pro**（回 400 "update your user level"）；(b) `TaiwanStockTradingDailyReportSecIdAgg` 在 Sponsor 可用但**須「股+分點」兩者**（只給其一被拒 `... can't be none`），對全市場排行不合用；(c) **非彙總 `TaiwanStockTradingDailyReport` 以 `(securities_trader_id, date)` 查詢在 Sponsor 可用**（官方測試 tests/data/test_data_loader.py 有此實例），回該分點當日各股逐筆買賣。**本專案採 (c) 逐筆精算**。Sponsor 每小時上限實測=6000。
 - **參數**：`stock_id`／`securities_trader_id`／`date`（單日；內部 start=end=date）；或 `use_object=True` 直接抓整日物件。
 - **欄位（逐字）**：`date`、`stock_id`、`securities_trader_id`（券商代碼）、`securities_trader`（券商名稱）、`price`（成交價）、`buy`（買進股數）、`sell`（賣出股數）。
-- **重要口徑**：逐筆表（`TaiwanStockTradingDailyReport`）同一 (分點,股,日) 有多列（不同成交價），逐筆精算＝ Σ(buy×price) − Σ(sell×price)——**但此需 Sponsor Pro**。本專案改用 SecIdAgg：每列已是 (日,分點,股) 彙總，淨買超以**均價估算**＝ `buy_volume×buy_price − sell_volume×sell_price`（決定 A 採此近似）。
+- **重要口徑**：以 (c) 非彙總報表查詢，同一 (分點,股,日) 有多列（不同成交價），**逐筆精算**淨買超金額＝ Σ(buy×price) − Σ(sell×price)（＝使用者原偏好、較準口徑，且在 Sponsor 可用；整日物件才需 Pro）。
 - **輔助 dataset**：
   - `TaiwanSecuritiesTraderInfo`（券商代碼↔名稱對照；欄位 `securities_trader_id,securities_trader,date,address,phone`）。
   - `TaiwanStockTradingDailyReportSecIdAgg`（分點統計表，已預彙總、支援日期範圍；欄位 `date,stock_id,securities_trader_id,securities_trader,buy_volume,sell_volume,buy_price(買進均價),sell_price(賣出均價)`）——**本專案採用之主來源**。實跑證實：**必須以 `securities_trader_id`（分點代碼）查詢**（只給 stock_id 會被拒 `securities_trader_id can't be none`），故逐分點抓；分點代碼清單取自 `TaiwanSecuritiesTraderInfo`。於 Sponsor 可用（已實跑證實）。
@@ -77,7 +77,7 @@
 ## 分段規劃（7 段，每段有可判定驗收）
 
 ### Phase 1 — 最小垂直切片（單一 dataset，證明整條管線通）★必為最小切片
-- **做法**：核心用 `TaiwanStockTradingDailyReportSecIdAgg`（分點統計表），對取樣的數個分點（`PHASE1_BRANCHES=5`，代碼由 `TaiwanSecuritiesTraderInfo` 動態取得）以日期範圍查詢近 3 個交易日 → 落地 SQLite（`branch_daily_agg`）→ 以 actions/cache 保存 DB → 產出**一個 JSON**（各分點對個股「淨買超金額」＝buy_volume×buy_price−sell_volume×sell_price，top N）。同時印 `api_request_limit`（已實測=6000）。（註：因 SecIdAgg 須以分點代碼查詢，Phase 1 除核心 dataset 外另用 `TaiwanSecuritiesTraderInfo` 取分點清單。）
+- **做法**：只用 `TaiwanStockTradingDailyReport`（非彙總），對數個分點（`PHASE1_BRANCHES` 預設 `["1020"]`，官方測試之真實代碼；可 `--branches` 覆寫）以 `(securities_trader_id, date)` 逐日查近 3 個交易日（以 branches[0] 偵測交易日、跳過假日）→ 落地 SQLite（`branch_daily`）→ actions/cache 保存 → 產出**一個 JSON**（逐筆精算 Σ(buy×price)−Σ(sell×price) top N）。同時印 `api_request_limit`（實測=6000）。
 - **選此 dataset 理由**：分點是勝率旗艦功能骨幹；SecIdAgg 是 Sponsor 可行且省請求的路徑（逐股一次抓日期範圍）。整日物件因需 Sponsor Pro 已排除。
 - **驗收**：(1) DB 有 3 個交易日資料；(2) 重跑不重抓（整窗已涵蓋則 skip，log 顯示）；(3) 輸出 JSON 內含 (分點,股,日,淨買超金額)；(4) log 印出實際每小時上限數字；(5) 單次執行 < 15 分；(6) 確認 SecIdAgg 於 Sponsor 可用（若層級不足會明確報 user level 錯誤）。「關鍵指令」已補進 CLAUDE.md。
 
@@ -115,7 +115,7 @@
 ## 已確認決定（本輪）
 1. **勝率四參數**：✔ 維持預設 `120 交易日／單日淨買超 ≥ 500 萬／持有 5 交易日／事件數 ≥ 10`（皆常數化可隨時改）。另採兩項「不改參數、只改排序/勝負口徑」的升級：排序改 Wilson 下界＋一律顯示事件數 N（見 Phase 3）；「超額報酬」勝負與相對成交額門檻列 v1.1 待議。
 2. **部署**：✔ 公開 GitHub Pages（repo 需 public；禁區更須嚴守，見 Phase 7）。
-3. **勝率「買超金額」計算口徑**：✔ 決定 A——本專案 Sponsor 用 SecIdAgg 均價估算 `buy_volume×buy_price − sell_volume×sell_price`。逐筆精算需 Sponsor Pro（實跑已證整日物件在 Sponsor 回 400）；未來升級可無痛切換。
+3. **勝率「買超金額」計算口徑**：✔ **逐筆精算** `Σ(buy×price)−Σ(sell×price)`，資料取自非彙總 `TaiwanStockTradingDailyReport`（以分點+日期查詢，Sponsor 可用）。（決定 A 的 SecIdAgg 均價估算已被實跑推翻：SecIdAgg 須股+分點兩者、對排行不合用；逐筆精算反而在 Sponsor 可行，即使用者原偏好、較準。）
 4. **勝率涵蓋範圍**：SecIdAgg 為**逐分點**查詢（securities_trader_id），需列舉分點宇宙——分點清單取自 `TaiwanSecuritiesTraderInfo`（Phase 1 取樣 5 個分點，Phase 3 擴至全部分點）；功能 C 追蹤清單另給小清單——**待使用者提供追蹤清單內容**（Phase 5 前再定，不擋 Phase 1）。
 5. **大盤替代來源**：✔ 採 TWSE FMTQIK（免 token）取代 FinMind 缺項。
 
@@ -124,8 +124,10 @@
 ## 未查證 TODO（Actions 實測補齊）
 - [x] FinMind Sponsor 每小時上限＝**6000**（2026-07-05 `user_info.api_request_limit` 實測）。
 - [x] 整日物件 `use_object` 層級＝**需 Sponsor Pro**（實跑回 `400 "update your user level"`）。
-- [x] `TaiwanStockTradingDailyReportSecIdAgg` 於 Sponsor **可用**，但**必須以 `securities_trader_id` 查詢**（2026-07-05 實跑：只給 stock_id 回 `securities_trader_id can't be none`）。
-- [ ] `TaiwanSecuritiesTraderInfo` 於 Sponsor 是否可用、回傳分點總數（下次實跑確認；影響 Phase 3 全市場請求數估算）。
+- [x] `TaiwanStockTradingDailyReportSecIdAgg`：Sponsor 可用但**須「股+分點」兩者**（先後回 `securities_trader_id can't be none`、`data_id can't be none`）→ 對排行不合用，改用非彙總報表。
+- [x] `TaiwanSecuritiesTraderInfo` 於 Sponsor **可用**（run #4 回分點清單，如 075T/087T/1020…）；Phase 3 全市場列舉可用它。
+- [ ] 非彙總 `TaiwanStockTradingDailyReport` 以 `(securities_trader_id, date)` 查詢在 Sponsor 的實跑確認（第四次 run；官方測試實例佐證應可用）。
+- [ ] 非彙總報表逐 (分點,日) 在全市場規模的請求數/耗時（Phase 2/3；6000/hr 下 ~千分點×120日需分批回補）。
 - [ ] `TaiwanStockPrice`／`TaiwanStockTotalReturnIndex` 是否 Sponsor 可取。
 - [ ] TWSE FMTQIK 回傳 JSON 的實際欄位鍵名與型別（Phase 5 實測對映）。
 - [ ] SecIdAgg 逐股查詢在全市場規模的請求數與耗時（驗證 15 分預算；Phase 2/3）。
