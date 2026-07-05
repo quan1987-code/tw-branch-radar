@@ -1,0 +1,217 @@
+<!-- tw-branch-radar 台股分點雷達 · 單檔面板（讀 data/*.json）
+     手機優先。資料由 GitHub Actions 每日更新產出 data/*.json。
+     台股配色：紅=漲/溢價、綠=跌/折價。 -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>台股分點雷達</title>
+<style>
+  :root{
+    --bg:#0e1116; --card:#171b22; --card2:#1e232c; --line:#2a313c;
+    --fg:#e6e9ee; --mut:#98a2b3; --acc:#3b82f6;
+    --up:#ef4444; --down:#22c55e; --warn:#f59e0b;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f4f6f9; --card:#fff; --card2:#f0f3f7; --line:#e3e8ef;
+           --fg:#1a2230; --mut:#5b6675; --acc:#2563eb; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",Roboto,sans-serif;
+    line-height:1.45;-webkit-text-size-adjust:100%}
+  header{padding:18px 16px 8px;position:sticky;top:0;background:linear-gradient(var(--bg),var(--bg) 70%,transparent);z-index:5}
+  h1{font-size:20px;margin:0;letter-spacing:.5px}
+  .sub{color:var(--mut);font-size:12px;margin-top:3px}
+  main{padding:8px 12px 40px;max-width:820px;margin:0 auto}
+  section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0;overflow:hidden}
+  h2{font-size:15px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+  h2 .tag{font-size:11px;color:var(--mut);font-weight:400;margin-left:auto}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px}
+  .tile{background:var(--card2);border-radius:10px;padding:10px 12px}
+  .tile .k{color:var(--mut);font-size:11px}
+  .tile .v{font-size:18px;font-weight:650;margin-top:2px;font-variant-numeric:tabular-nums}
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px}
+  table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+  th,td{padding:8px 8px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--mut);font-weight:500;font-size:11px;position:sticky;top:0;background:var(--card)}
+  tbody tr:last-child td{border-bottom:none}
+  .up{color:var(--up)} .down{color:var(--down)} .mut{color:var(--mut)}
+  .pill{display:inline-block;padding:2px 7px;border-radius:999px;font-size:11px;font-weight:600}
+  .bar{height:6px;border-radius:3px;background:var(--card2);overflow:hidden;min-width:54px}
+  .bar>i{display:block;height:100%;background:var(--acc)}
+  .empty{color:var(--mut);font-size:13px;padding:10px 2px}
+  .banner{background:var(--warn);color:#111;font-size:12px;text-align:center;padding:6px;border-radius:8px;margin:6px 0}
+  footer{color:var(--mut);font-size:11px;text-align:center;padding:16px 12px 28px;line-height:1.7}
+  a{color:var(--acc)}
+</style>
+
+<header>
+  <h1>台股分點雷達 <span style="font-size:13px;color:var(--mut)">Branch Radar</span></h1>
+  <div class="sub" id="asof">載入中…</div>
+</header>
+
+<main>
+  <div id="fallbackBanner" style="display:none" class="banner">示意資料 · 實際數據由 GitHub Actions 每日更新</div>
+
+  <!-- SECTION: 大盤 + 成交（Phase 5 · market.json） -->
+  <section id="s-market">
+    <h2>大盤成交 <span class="tag" id="market-date"></span></h2>
+    <div class="tiles" id="market-tiles"></div>
+    <div style="margin-top:12px"></div>
+    <h2 style="font-size:13px">追蹤清單</h2>
+    <div class="scroll"><table id="watch"><thead><tr>
+      <th>股票</th><th>收盤</th><th>漲跌幅</th><th>開</th><th>高</th><th>低</th><th>成交量(張)</th>
+    </tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <!-- SECTION: 高勝率分點排行（Phase 3 · ranking.json） -->
+  <section id="s-rank">
+    <h2>高勝率分點排行 <span class="tag" id="rank-params"></span></h2>
+    <div class="scroll"><table id="rank"><thead><tr>
+      <th>分點</th><th>勝率</th><th>Wilson</th><th>勝/可評</th><th>事件</th>
+    </tr></thead><tbody></tbody></table></div>
+    <div class="empty" id="rank-note" style="display:none"></div>
+  </section>
+
+  <!-- SECTION: 鉅額交易看板（Phase 4 · block_trade.json） -->
+  <section id="s-block">
+    <h2>鉅額交易 <span class="tag" id="block-date"></span></h2>
+    <div class="scroll"><table id="block"><thead><tr>
+      <th>日期</th><th>股票</th><th>交易別</th><th>成交價</th><th>收盤</th><th>折溢價</th><th>成交金額</th>
+    </tr></thead><tbody></tbody></table></div>
+    <div class="empty" id="block-note" style="display:none"></div>
+  </section>
+
+  <!-- SECTION: 當日大額買超（Phase 2 · status.json top_net_buy） -->
+  <section id="s-top">
+    <h2>分點大額買超 top <span class="tag" id="top-range"></span></h2>
+    <div class="scroll"><table id="top"><thead><tr>
+      <th>日期</th><th>分點</th><th>股票</th><th>淨買超(億)</th><th>買(張)</th><th>賣(張)</th>
+    </tr></thead><tbody></tbody></table></div>
+  </section>
+</main>
+
+<footer>
+  資料來源：<b>FinMind</b>（<a href="https://finmind.github.io/">finmind.github.io</a>）· 大盤成交資訊：<b>臺灣證券交易所 TWSE</b><br>
+  僅供個人非商業用途參考，不構成投資建議。台股配色：<span class="up">紅=漲/溢價</span> · <span class="down">綠=跌/折價</span>
+</footer>
+
+<!-- SECTION: script — 載入 data/*.json（失敗則用內嵌示意資料）並渲染 -->
+<script>
+const FALLBACK = {
+  ranking:{phase:3,params:{lookback_days:120,event_min_amount:5000000,hold_days:5,min_events:10},
+    branches_considered:1,branches_ranked:1,
+    ranking:[{securities_trader_id:"1020",securities_trader:"合庫",events:3693,evaluable:3564,wins:1954,pending:129,win_rate:0.5483,wilson_lb:0.532}]},
+  status:{trading_days_range:["2025-12-31","2026-07-03"],total_rows:601826,
+    top_net_buy:[
+      {date:"2026-06-24",securities_trader_id:"1020",securities_trader:"合庫",stock_id:"2303",net_amount:1097622574,buy_shares:6641280,sell_shares:316941},
+      {date:"2026-01-16",securities_trader_id:"1020",securities_trader:"合庫",stock_id:"2603",net_amount:953551950,buy_shares:5006300,sell_shares:23600},
+      {date:"2026-03-04",securities_trader_id:"1020",securities_trader:"合庫",stock_id:"3008",net_amount:661933655,buy_shares:282407,sell_shares:5},
+      {date:"2026-03-09",securities_trader_id:"1020",securities_trader:"合庫",stock_id:"2330",net_amount:627162870,buy_shares:387026,sell_shares:37561},
+      {date:"2026-03-03",securities_trader_id:"1020",securities_trader:"合庫",stock_id:"3008",net_amount:597074690,buy_shares:245190,sell_shares:1100}]},
+  block:{block_trades:[
+    {date:"2026-07-03",stock_id:"2330",trade_type:"一般",price:1010,close:1000,premium_discount:0.01,trading_money:505000000},
+    {date:"2026-07-03",stock_id:"2317",trade_type:"一般",price:98,close:100,premium_discount:-0.02,trading_money:98000000}]},
+  market:{as_of:"2026-07-03",
+    market_twse_fmtqik:{Date:"1150703",TAIEX:"23000.00",TradeValue:"420000000000",Change:"+150.00"},
+    quotes:[{stock_id:"2330",close:1000,spread:1.5,open:990,max:1010,min:985,trading_volume:32000000},
+            {stock_id:"2317",close:100,spread:-0.8,open:101,max:102,min:99,trading_volume:41000000}]}
+};
+
+const $=(s,r=document)=>r.querySelector(s);
+const fmt=(n,d=0)=>n==null?"—":Number(n).toLocaleString("zh-TW",{minimumFractionDigits:d,maximumFractionDigits:d});
+const cls=v=>v>0?"up":v<0?"down":"mut";
+const sign=v=>(v>0?"+":"")+v;
+const lots=sh=>fmt(Math.round((sh||0)/1000));   // 股→張
+const oku=n=>fmt((n||0)/1e8,2);                  // 元→億
+
+async function load(name){
+  try{const r=await fetch(`data/${name}.json`,{cache:"no-store"});if(r.ok)return await r.json();}catch(e){}
+  return null;
+}
+
+function renderMarket(m){
+  const mk=m?.market_twse_fmtqik;
+  $("#market-date").textContent=m?("截至 "+(m.as_of||"")):"";
+  const tiles=$("#market-tiles");
+  if(mk){
+    const chg=parseFloat(String(mk.Change).replace(/[+,]/g,""))||0;
+    tiles.innerHTML=`
+      <div class="tile"><div class="k">加權指數 TAIEX</div><div class="v">${fmt(parseFloat(mk.TAIEX),2)}</div></div>
+      <div class="tile"><div class="k">漲跌</div><div class="v ${cls(chg)}">${sign(fmt(chg,2))}</div></div>
+      <div class="tile"><div class="k">成交金額</div><div class="v">${oku(parseFloat(mk.TradeValue))} 億</div></div>`;
+  }else tiles.innerHTML=`<div class="empty">大盤資料待更新</div>`;
+  const tb=$("#watch tbody");tb.innerHTML="";
+  (m?.quotes||[]).forEach(q=>{
+    tb.insertAdjacentHTML("beforeend",`<tr>
+      <td>${q.stock_id}</td><td>${fmt(q.close,2)}</td>
+      <td class="${cls(q.spread)}">${sign(fmt(q.spread,2))}%</td>
+      <td class="mut">${fmt(q.open,2)}</td><td class="mut">${fmt(q.max,2)}</td><td class="mut">${fmt(q.min,2)}</td>
+      <td>${lots(q.trading_volume)}</td></tr>`);
+  });
+  if(!(m?.quotes||[]).length) $("#watch tbody").innerHTML=`<tr><td colspan="7" class="empty">追蹤清單待更新</td></tr>`;
+}
+
+function renderRank(r){
+  const p=r?.params;
+  $("#rank-params").textContent=p?`近${p.lookback_days}日·淨買超≥${fmt(p.event_min_amount/1e4)}萬·持有${p.hold_days}日·事件≥${p.min_events}`:"";
+  const tb=$("#rank tbody");tb.innerHTML="";
+  const rows=r?.ranking||[];
+  rows.forEach((x,i)=>{
+    const wr=(x.win_rate*100);
+    const c=wr>=55?"up":wr<50?"down":"";
+    tb.insertAdjacentHTML("beforeend",`<tr>
+      <td>${x.securities_trader_id} <span class="mut">${x.securities_trader||""}</span></td>
+      <td class="${c}" style="font-weight:650">${fmt(wr,1)}%</td>
+      <td><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+        <div class="bar"><i style="width:${Math.max(0,Math.min(100,x.wilson_lb*100))}%"></i></div>${fmt(x.wilson_lb*100,1)}</div></td>
+      <td class="mut">${fmt(x.wins)}/${fmt(x.evaluable)}</td>
+      <td class="mut">${fmt(x.events)}</td></tr>`);
+  });
+  const note=$("#rank-note");
+  if(!rows.length){ $("#rank tbody").innerHTML=""; note.style.display="block"; note.textContent="尚無達門檻分點（需回補多個分點；目前為單一分點示範）。"; }
+  else if((r.branches_considered||0)<=1){ note.style.display="block"; note.textContent=`目前僅回補 ${r.branches_considered} 個分點。擴大分點宇宙後即為完整排行。`; }
+}
+
+function renderBlock(b){
+  const rows=b?.block_trades||[];
+  $("#block-date").textContent=rows.length?`${rows[rows.length-1].date}~${rows[0].date}`:"";
+  const tb=$("#block tbody");tb.innerHTML="";
+  rows.forEach(x=>{
+    const pd=x.premium_discount;
+    tb.insertAdjacentHTML("beforeend",`<tr>
+      <td>${x.date.slice(5)}</td><td>${x.stock_id}</td><td class="mut">${x.trade_type||""}</td>
+      <td>${fmt(x.price,2)}</td><td class="mut">${x.close==null?"—":fmt(x.close,2)}</td>
+      <td class="${cls(pd)}">${pd==null?"—":sign(fmt(pd*100,2))+"%"}</td>
+      <td>${oku(x.trading_money)}億</td></tr>`);
+  });
+  if(!rows.length){ $("#block-note").style.display="block"; $("#block-note").textContent="近日無鉅額交易或資料待更新。"; }
+}
+
+function renderTop(s){
+  $("#top-range").textContent=s?.trading_days_range?s.trading_days_range.join("~"):"";
+  const tb=$("#top tbody");tb.innerHTML="";
+  (s?.top_net_buy||[]).slice(0,20).forEach(x=>{
+    tb.insertAdjacentHTML("beforeend",`<tr>
+      <td>${x.date.slice(5)}</td>
+      <td>${x.securities_trader_id} <span class="mut">${x.securities_trader||""}</span></td>
+      <td>${x.stock_id}</td>
+      <td class="up" style="font-weight:600">${oku(x.net_amount)}</td>
+      <td class="mut">${lots(x.buy_shares)}</td><td class="mut">${lots(x.sell_shares)}</td></tr>`);
+  });
+  if(!(s?.top_net_buy||[]).length) $("#top tbody").innerHTML=`<tr><td colspan="6" class="empty">資料待更新</td></tr>`;
+}
+
+(async ()=>{
+  let [ranking,status,block,market]=await Promise.all([load("ranking"),load("status"),load("block_trade"),load("market")]);
+  let fell=false;
+  if(!ranking){ranking=FALLBACK.ranking;fell=true;}
+  if(!status){status=FALLBACK.status;fell=true;}
+  if(!block){block=FALLBACK.block;fell=true;}
+  if(!market){market=FALLBACK.market;fell=true;}
+  if(fell) $("#fallbackBanner").style.display="block";
+  const gen=(status?.generated_at||ranking?.generated_at||"").slice(0,16).replace("T"," ");
+  $("#asof").textContent = (fell?"示意資料":"更新於 "+(gen||"—"))+" · 涵蓋 "+(status?.trading_days_range?.join("~")||"—");
+  renderMarket(market); renderRank(ranking); renderBlock(block); renderTop(status);
+})();
+</script>
