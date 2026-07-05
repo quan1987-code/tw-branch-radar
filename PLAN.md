@@ -1,7 +1,7 @@
 # PLAN.md — tw-branch-radar 台股分點雷達
 
 > 本檔為進度主檔。每完成一段即更新「進度追蹤」勾選並 commit+push（雲端環境：存檔＝commit+push）。
-> Session 開頭先讀本檔續作。狀態：**Phase 1、Phase 2 ✅ 完成（Actions 實跑驗收通過）。分點取法定案：非彙總 `TaiwanStockTradingDailyReport` 以 `(securities_trader_id, date)` 查詢、逐筆精算；`TaiwanStockTradingDate` 建交易日曆；backfill 分批可續跑（MAX_REQ_PER_RUN）。run #7 對分點 1020 回補 120 交易日全涵蓋（cache 264KB→11MB、6 分鐘）、run #8 重跑增量零重抓。Sponsor 上限=6000/hr；buy/sell 為股數、量級合理。下一步：Phase 3（勝率分點排行：事件抽取＋+5 日 close＋Wilson 排序；含決定分點宇宙）。**
+> Session 開頭先讀本檔續作。狀態：**Phase 1、2、3A ✅ 完成（Actions 實跑驗收通過）。分點取法：非彙總 `TaiwanStockTradingDailyReport` 逐 (分點,日) 逐筆精算；`TaiwanStockTradingDate` 日曆；backfill 可續跑。Phase 3A 勝率演算法（事件抽取＋`TaiwanStockPrice` +5 日 close 判勝＋Wilson 排序＋pending）run #9 於真實資料驗證：合庫(1020) 事件 3693、可評 3564、勝率 54.8%、Wilson 0.532。`TaiwanStockPrice` 確認 Sponsor 可用。下一步 = Phase 3B：**決定分點宇宙規模（決定 #4）**才能有多分點可比的真排行——全市場(~20–40hr 分批回補) vs 活躍分點子集。**
 
 ---
 
@@ -130,7 +130,7 @@
 - [ ] 抽查 2026-07-03 聯發科(2454) 分點1020 淨買超≈1.2 億（隱含均價偏高，Phase 3 對照當日 close 確認無異常）。
 - [ ] Phase 3 門檻檢討：活躍分點(如 1020)單股單日淨買超常達數千萬~億，500 萬門檻可能偏低、事件過多——Phase 3 視分佈微調（四參數仍可調）。
 - [ ] 非彙總報表逐 (分點,日) 在全市場規模的請求數/耗時（Phase 2/3；6000/hr 下 ~千分點×120日需分批回補）。
-- [ ] `TaiwanStockPrice`／`TaiwanStockTotalReturnIndex` 是否 Sponsor 可取。
+- [x] `TaiwanStockPrice` 於 Sponsor **可用**（run #9 抓 443 檔成功，欄位含 close）。`TaiwanStockTotalReturnIndex` 待 Phase 5 確認。
 - [ ] TWSE FMTQIK 回傳 JSON 的實際欄位鍵名與型別（Phase 5 實測對映）。
 - [ ] SecIdAgg 逐股查詢在全市場規模的請求數與耗時（驗證 15 分預算；Phase 2/3）。
 
@@ -140,7 +140,7 @@
 - [x] Phase 0 資料查證（本檔資料清單）
 - [x] Phase 1 最小垂直切片 ✅（Actions run #5 冷跑抓 07-01/02/03 共 5007/4473/5626 列、run #6 熱跑增量零重抓；印出 api 上限=6000；輸出 data/phase1_sample.json top50；單次 <15 分；三次失敗迭代已釐清正確 dataset 取法）
 - [x] Phase 2 增量 + 交易日曆 + 120 日回補 ✅（run #7：`TaiwanStockTradingDate` 取 120 交易日、分點 1020 回補全涵蓋、6 分鐘 <15 分；run #8：重跑零重抓；分批續跑機制離線＋設計驗證）
-- [ ] Phase 3 功能 A 勝率排行
+- [~] Phase 3 功能 A 勝率排行（演算法 3A ✅ run #9 真實驗證：合庫1020 勝率54.8%/Wilson0.532/事件3693；**待 3B 定分點宇宙規模**才有多分點真排行）
 - [ ] Phase 4 功能 B 鉅額看板
 - [ ] Phase 5 功能 C 成交資訊
 - [ ] Phase 6 功能 D HTML 面板
