@@ -1,7 +1,7 @@
 # PLAN.md — tw-branch-radar 台股分點雷達
 
 > 本檔為進度主檔。每完成一段即更新「進度追蹤」勾選並 commit+push（雲端環境：存檔＝commit+push）。
-> Session 開頭先讀本檔續作。狀態：**Phase 1、2、3A ✅ 完成（Actions 實跑驗收通過）。分點取法：非彙總 `TaiwanStockTradingDailyReport` 逐 (分點,日) 逐筆精算；`TaiwanStockTradingDate` 日曆；backfill 可續跑。Phase 3A 勝率演算法（事件抽取＋`TaiwanStockPrice` +5 日 close 判勝＋Wilson 排序＋pending）run #9 於真實資料驗證：合庫(1020) 事件 3693、可評 3564、勝率 54.8%、Wilson 0.532。`TaiwanStockPrice` 確認 Sponsor 可用。下一步 = Phase 3B：**決定分點宇宙規模（決定 #4）**才能有多分點可比的真排行——全市場(~20–40hr 分批回補) vs 活躍分點子集。**
+> Session 開頭先讀本檔續作。狀態：**Phase 1、2、3A、4、5 ✅ 完成（Actions run #5–#10 實跑驗收）。collector 產出 4 個 JSON：status/ranking/block_trade/market。實測定案：分點非彙總逐筆精算；勝率＝事件+5日close+Wilson（合庫1020 勝率54.8%）；鉅額全市場空stock_id可查+折溢價；大盤 TWSE FMTQIK（鍵 TAIEX/TradeValue/Change…）。Sponsor 上限=6000。下一步：Phase 6（單檔 HTML 面板，讀 4 JSON）＋Phase 7（cron＋公開 Pages＋commit 產物）。另 Phase 3B（分點宇宙規模，決定#4）待使用者拍板才有多分點真排行。**
 
 ---
 
@@ -131,7 +131,8 @@
 - [ ] Phase 3 門檻檢討：活躍分點(如 1020)單股單日淨買超常達數千萬~億，500 萬門檻可能偏低、事件過多——Phase 3 視分佈微調（四參數仍可調）。
 - [ ] 非彙總報表逐 (分點,日) 在全市場規模的請求數/耗時（Phase 2/3；6000/hr 下 ~千分點×120日需分批回補）。
 - [x] `TaiwanStockPrice` 於 Sponsor **可用**（run #9 抓 443 檔成功，欄位含 close）。`TaiwanStockTotalReturnIndex` 待 Phase 5 確認。
-- [ ] TWSE FMTQIK 回傳 JSON 的實際欄位鍵名與型別（Phase 5 實測對映）。
+- [x] TWSE FMTQIK 欄位鍵（run #10 實測）：`Date, TradeVolume(成交股數), TradeValue(成交金額), Transaction(成交筆數), TAIEX(發行量加權股價指數), Change(漲跌點數)`；OpenAPI 僅回最近 3 筆。
+- [x] `TaiwanStockBlockTrade` 空 stock_id **可查全市場**（run #10 得 41 筆；欄位 date/price/stock_id/trade_type/trading_money/volume）。
 - [ ] SecIdAgg 逐股查詢在全市場規模的請求數與耗時（驗證 15 分預算；Phase 2/3）。
 
 ---
@@ -141,10 +142,10 @@
 - [x] Phase 1 最小垂直切片 ✅（Actions run #5 冷跑抓 07-01/02/03 共 5007/4473/5626 列、run #6 熱跑增量零重抓；印出 api 上限=6000；輸出 data/phase1_sample.json top50；單次 <15 分；三次失敗迭代已釐清正確 dataset 取法）
 - [x] Phase 2 增量 + 交易日曆 + 120 日回補 ✅（run #7：`TaiwanStockTradingDate` 取 120 交易日、分點 1020 回補全涵蓋、6 分鐘 <15 分；run #8：重跑零重抓；分批續跑機制離線＋設計驗證）
 - [~] Phase 3 功能 A 勝率排行（演算法 3A ✅ run #9 真實驗證：合庫1020 勝率54.8%/Wilson0.532/事件3693；**待 3B 定分點宇宙規模**才有多分點真排行）
-- [ ] Phase 4 功能 B 鉅額看板
-- [ ] Phase 5 功能 C 成交資訊
-- [ ] Phase 6 功能 D HTML 面板
-- [ ] Phase 7 Actions 排程 + 部署
+- [x] Phase 4 功能 B 鉅額看板 ✅（run #10：全市場 41 筆＋折溢價，block_trade.json）
+- [x] Phase 5 功能 C 成交資訊 ✅（run #10：追蹤 7 檔價量＋TWSE 大盤，market.json）
+- [x] Phase 6 功能 D HTML 面板 ✅（index.html 單檔讀 4 JSON、手機優先、台股紅漲綠跌、缺檔降級＋內嵌示意；Playwright 實測渲染五區塊正常。真實資料待 Phase 7 commit 產物＋Pages）
+- [~] Phase 7 Actions 排程 + 部署（每日 cron 12:00 UTC＋commit data/*.json **已實跑驗證**：run #11 bot commit「chore(data)」成功、真實 4 JSON 進 repo；面板讀真實資料渲染正常。**剩使用者動作**：Settings→Pages 啟用公開 Pages(main)＋合併分支到 main 讓 cron 生效）
 
 ---
 

@@ -1,0 +1,27 @@
+{
+  "phase": 3,
+  "generated_at": "2026-07-05T16:11:02.381463+00:00",
+  "params": {
+    "lookback_days": 120,
+    "event_min_amount": 5000000,
+    "hold_days": 5,
+    "min_events": 10
+  },
+  "win_definition": "分點對個股單日淨買超 ≥ 門檻計 1 事件；事件日+HOLD_DAYS 交易日 close > 事件日 close 為勝；排序用 Wilson 下界（懲罰小樣本）",
+  "branches_considered": 1,
+  "branches_ranked": 1,
+  "ranking": [
+    {
+      "securities_trader_id": "1020",
+      "securities_trader": "合庫",
+      "events": 3693,
+      "evaluable": 3564,
+      "wins": 1954,
+      "pending": 129,
+      "win_rate": 0.5483,
+      "wilson_lb": 0.5319
+    }
+  ],
+  "api_hourly_limit": 6000,
+  "source": "FinMind"
+}
