@@ -61,7 +61,7 @@ jobs:
         env:
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}   # 需先於 repo 設定 secret
           MAX_REQ_PER_RUN: ${{ inputs.max_req || '2000' }}
-          RUN_BUDGET_SEC: '660'    # 牆鐘預算 11 分，留 4 分給裝依賴/存 cache，防 15 分逾時掉進度
+          RUN_BUDGET_SEC: '600'    # 牆鐘預算 10 分，留 5 分給裝依賴/cache 存取（DB 漸大），防 15 分逾時掉進度
           QUOTA_MARGIN: '300'      # api 每小時剩餘 < 300 即停，防 FinMind 超限
         run: >
           python collector.py

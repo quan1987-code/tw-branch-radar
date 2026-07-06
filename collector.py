@@ -52,6 +52,9 @@ TOP_N = 50                    # 輸出前 N 筆淨買超
 REQ_TIMEOUT = 120             # 單次查詢逾時（秒）
 
 DATASET = "TaiwanStockTradingDailyReport"
+# 非空哨符：傳給 taiwan_stock_trading_daily_report 之 stock_id_list，讓 client 跳過內部
+# _get_stock_id_list（省 2 次多餘 dataset 下載、並避開當日空表崩潰）；同步查詢實際忽略其值。
+SKIP_STOCK_LIST_PROBE = ["_skip_"]
 # 依 FinMind client v1.9.12 docstring 驗證之欄位（逐字）
 EXPECTED_COLS = {
     "date", "stock_id", "securities_trader_id", "securities_trader",
@@ -227,10 +230,18 @@ def validate_cols(df, key: str) -> None:
 
 # ============ 抓取（增量，非彙總報表逐 (分點,日) 查詢） ============
 def fetch_branch_day(dl: DataLoader, trader_id: str, day: str):
-    """查某分點某日的非彙總分點日報表；回 DataFrame（可能空）。錯誤轉可讀訊息並中止。"""
+    """查某分點某日的非彙總分點日報表；回 DataFrame（可能空）。錯誤轉可讀訊息並中止。
+
+    以 (securities_trader_id, date) 查詢。傳非空 stock_id_list 之目的：讓 FinMind client
+    v1.9.12 跳過其內部 `_get_stock_id_list(date)`——後者會多抓 TaiwanStockInfo＋TaiwanStockPrice
+    兩個 dataset（每對多 2 次請求、拖慢 ~3×），且當日尚未結算時該內部呼叫會對空價格表做
+    ['stock_id','Trading_Volume'] 取欄而崩潰。同步路徑實際只用 securities_trader_id+date 查詢、
+    忽略此 list（見 client get_data 同步分支），故傳哨符不影響結果、只避開多餘/會崩潰的呼叫。
+    """
     try:
         return dl.taiwan_stock_trading_daily_report(
-            securities_trader_id=trader_id, date=day, timeout=REQ_TIMEOUT)
+            securities_trader_id=trader_id, date=day,
+            stock_id_list=SKIP_STOCK_LIST_PROBE, timeout=REQ_TIMEOUT)
     except Exception as exc:  # noqa: BLE001 - 轉可讀訊息
         raise SystemExit(
             f"分點日報表查詢失敗（分點 {trader_id} {day}）：{exc}\n"
@@ -662,7 +673,10 @@ def main() -> None:
                         help="逗號分隔追蹤股票代碼（預設 DEFAULT_WATCHLIST）")
     args = parser.parse_args()
 
-    anchor = date.fromisoformat(args.anchor) if args.anchor else date.today()
+    # 預設錨定「昨天」而非今天：今日盤中/收盤前資料未結算，抓了會存空並把 fetched_keys 標記為
+    # 已抓，導致當日真實資料永遠補不到；且每 30 分排程會在各時段觸發（含未結算時段），錨定昨天
+    # 使結果與執行時刻無關、皆為已結算資料。要抓特定歷史窗可用 --anchor 明確覆寫。
+    anchor = date.fromisoformat(args.anchor) if args.anchor else date.today() - timedelta(days=1)
     override = [s.strip() for s in args.branches.split(",") if s.strip()]
     all_mode = args.branches.strip().upper() == "ALL"
     watchlist = [s.strip() for s in args.watchlist.split(",") if s.strip()] or list(DEFAULT_WATCHLIST)
