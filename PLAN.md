@@ -145,11 +145,12 @@
   - 3A 演算法 ✅ run #9：合庫1020 勝率54.8%/Wilson0.532/事件3693。
   - 3B 全市場 ✅實作：`--branches ALL` 由 `TaiwanSecuritiesTraderInfo` 列舉全部分點；`backfill` 三守衛（`MAX_REQ_PER_RUN` 對數上限／`RUN_BUDGET_SEC` 牆鐘 660s／`QUOTA_MARGIN` api 剩餘 300）皆可續跑（增量零重抓）；`branch_daily` 改**聚合 schema**〔(分點,股,日) 買賣金額/股數，逐筆價位列寫入前 GROUP BY 折算，~20× 壓縮〕使全市場（實測 1020 單分點 120 日=60 萬逐筆列 → 聚合後大減）裝得進 actions/cache；回補未完成僅純回補、寫 `remaining.txt` 供 workflow gate（不 commit、不彙總）。cache key v2；離線測試 phase3/phase3b 全綠。
   - run #12 全市場首跑（實測校正）：分點宇宙 **1010 個**；發現並修正兩問題——(1) client `taiwan_stock_trading_daily_report(securities_trader_id,date)` 未給 stock_id 時會呼叫內部 `_get_stock_id_list(date)`，多抓 `TaiwanStockInfo`＋`TaiwanStockPrice`（**每對 3 次請求、~2.6s/對**），且同步路徑其實忽略該清單 → 傳非空 `stock_id_list` 哨符跳過之（**降回 1 請求/對、~3× 提速**）；(2) 錨定今日會抓到當日未結算資料，`_get_stock_id_list` 對空價格表取 `['stock_id','Trading_Volume']` 而崩潰、且存空會污染 `fetched_keys` → 預設**錨定昨天**（僅已結算日；`--anchor` 可覆寫）。另 `RUN_BUDGET_SEC` 660→600 留 cache 存取餘裕。修正後規模：1010×120≈12.1 萬對、~1 請求/對，每次 ~600–700 對、約 **180 次跑／~5 日**填滿。
-  - **待**：以修正版重跑驗證（確認 1 請求/對、不再崩潰）→ 通過後合併 main 啟用每 30 分 cron 自動回補 → `remaining=0` 後自動彙總多分點真排行並 commit。
+  - run #13 修正版驗證 ✅ **通過**：錨定=2026-07-05（已結算，窗 2025-12-31~07-03）；**1.02 請求/對**（1200 對 1223 請求）、**0.45s/對**、本次 1323 對/600s、stop=time；cache 僅 **21.7 MB**（壓縮，聚合有效、離 10GB 極遠）；資料正確（1020×2303 淨買超=1,097,622,574 與舊逐筆版一致）；remaining=119877>0 故略過 commit。實測規模：每輪 ~1300 對 → **~90 輪／約 3 日**填滿。
+  - **已合併 main（6a53906，fast-forward，經使用者同意）＋啟用每 30 分 cron**；已手動觸發 main 首輪回補（cache 於 main 從空重建）。**進行中**：cron 每 30 分（07–23 UTC）自動續跑至 `remaining=0` → 自動彙總 1010 分點真排行/鉅額/大盤並 commit。**剩使用者動作**：Settings→Pages 啟用公開 Pages(main)。
 - [x] Phase 4 功能 B 鉅額看板 ✅（run #10：全市場 41 筆＋折溢價，block_trade.json）
 - [x] Phase 5 功能 C 成交資訊 ✅（run #10：追蹤 7 檔價量＋TWSE 大盤，market.json）
 - [x] Phase 6 功能 D HTML 面板 ✅（index.html 單檔讀 4 JSON、手機優先、台股紅漲綠跌、缺檔降級＋內嵌示意；Playwright 實測渲染五區塊正常。真實資料待 Phase 7 commit 產物＋Pages）
-- [~] Phase 7 Actions 排程 + 部署（每日 cron 12:00 UTC＋commit data/*.json **已實跑驗證**：run #11 bot commit「chore(data)」成功、真實 4 JSON 進 repo；面板讀真實資料渲染正常。**剩使用者動作**：Settings→Pages 啟用公開 Pages(main)＋合併分支到 main 讓 cron 生效）
+- [~] Phase 7 Actions 排程 + 部署（cron **每 30 分 07–23 UTC**＋commit data/*.json，gate 於 `.cache/remaining.txt==0`：回補中純回補不 commit、填滿後每輪彙總；run #11 已驗證 bot commit「chore(data)」機制。程式**已於 main（6a53906）生效**。**剩使用者動作**：Settings→Pages 啟用公開 Pages(main)）
 
 ---
 
