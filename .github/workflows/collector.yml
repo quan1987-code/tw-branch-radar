@@ -3,10 +3,10 @@ name: collector
 # 每日排程 + 手動觸發：抓取→SQLite→彙總 JSON→commit 產物（供公開 GitHub Pages）。
 on:
   schedule:
-    # 台股收盤後（05:30 UTC）資料備妥的窗口內每 30 分推進一批（07–23 UTC，約 34 批/日）。
-    # 全市場回補期間（remaining>0）為純回補、不 commit；回補完成後（remaining=0）各次做便宜彙總，
-    # 資料未變則 no-op。約 3 日填滿 120 日全市場；填滿後即每日自動維護。
-    - cron: '*/30 7-23 * * *'
+    # 每 30 分推進一批（全天候，48 批/日）。錨定「昨天」使 collector 與執行時刻無關（皆已結算資料），
+    # 故無需限時段。全市場回補期間（remaining>0）為純回補、不 commit；回補完成後（remaining=0）各次
+    # 做便宜彙總，資料未變則 no-op。約 2 日填滿 120 日全市場；填滿後即每日自動維護。
+    - cron: '*/30 * * * *'
   workflow_dispatch:
     inputs:
       days:
