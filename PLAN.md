@@ -1,7 +1,7 @@
 # PLAN.md — tw-branch-radar 台股分點雷達
 
 > 本檔為進度主檔。每完成一段即更新「進度追蹤」勾選並 commit+push（雲端環境：存檔＝commit+push）。
-> Session 開頭先讀本檔續作。狀態：**Phase 1、2、3A、4、5 ✅ 完成（Actions run #5–#10 實跑驗收）。collector 產出 4 個 JSON：status/ranking/block_trade/market。實測定案：分點非彙總逐筆精算；勝率＝事件+5日close+Wilson（合庫1020 勝率54.8%）；鉅額全市場空stock_id可查+折溢價；大盤 TWSE FMTQIK（鍵 TAIEX/TradeValue/Change…）。Sponsor 上限=6000。下一步：Phase 6（單檔 HTML 面板，讀 4 JSON）＋Phase 7（cron＋公開 Pages＋commit 產物）。另 Phase 3B（分點宇宙規模，決定#4）待使用者拍板才有多分點真排行。**
+> Session 開頭先讀本檔續作。狀態：**Phase 1、2、3A、4、5 ✅ 完成（Actions run #5–#10 實跑驗收）。collector 產出 4 個 JSON：status/ranking/block_trade/market。實測定案：分點非彙總逐筆精算；勝率＝事件+5日close+Wilson（合庫1020 勝率54.8%）；鉅額全市場空stock_id可查+折溢價；大盤 TWSE FMTQIK（鍵 TAIEX/TradeValue/Change…）。Sponsor 上限=6000。Phase 6/7 ✅ 完成（PR #2/#3 併入 main）。Phase 3B 全市場回補 ✅實作（--branches ALL 列舉全部分點＋backfill 三守衛＋branch_daily 聚合 schema），待 Actions 實跑填滿（每 30 分推進、約 3 日）後自動彙總多分點真排行。**
 
 ---
 
@@ -141,7 +141,10 @@
 - [x] Phase 0 資料查證（本檔資料清單）
 - [x] Phase 1 最小垂直切片 ✅（Actions run #5 冷跑抓 07-01/02/03 共 5007/4473/5626 列、run #6 熱跑增量零重抓；印出 api 上限=6000；輸出 data/phase1_sample.json top50；單次 <15 分；三次失敗迭代已釐清正確 dataset 取法）
 - [x] Phase 2 增量 + 交易日曆 + 120 日回補 ✅（run #7：`TaiwanStockTradingDate` 取 120 交易日、分點 1020 回補全涵蓋、6 分鐘 <15 分；run #8：重跑零重抓；分批續跑機制離線＋設計驗證）
-- [~] Phase 3 功能 A 勝率排行（演算法 3A ✅ run #9 真實驗證：合庫1020 勝率54.8%/Wilson0.532/事件3693；**待 3B 定分點宇宙規模**才有多分點真排行）
+- [~] Phase 3 功能 A 勝率排行
+  - 3A 演算法 ✅ run #9：合庫1020 勝率54.8%/Wilson0.532/事件3693。
+  - 3B 全市場 ✅實作：`--branches ALL` 由 `TaiwanSecuritiesTraderInfo` 列舉全部分點；`backfill` 三守衛（`MAX_REQ_PER_RUN` 對數上限／`RUN_BUDGET_SEC` 牆鐘 660s／`QUOTA_MARGIN` api 剩餘 300）皆可續跑（增量零重抓）；`branch_daily` 改**聚合 schema**〔(分點,股,日) 買賣金額/股數，逐筆價位列寫入前 GROUP BY 折算，~20× 壓縮〕使全市場（實測 1020 單分點 120 日=60 萬逐筆列 → 聚合後大減）裝得進 actions/cache；回補未完成僅純回補、寫 `remaining.txt` 供 workflow gate（不 commit、不彙總）。cache key v2；離線測試 phase3/phase3b 全綠。
+  - **待**：Actions 實跑全市場回補（每 30 分推進 07–23 UTC，約 3 日填滿 120 日）→ `remaining=0` 後自動彙總多分點真排行並 commit。
 - [x] Phase 4 功能 B 鉅額看板 ✅（run #10：全市場 41 筆＋折溢價，block_trade.json）
 - [x] Phase 5 功能 C 成交資訊 ✅（run #10：追蹤 7 檔價量＋TWSE 大盤，market.json）
 - [x] Phase 6 功能 D HTML 面板 ✅（index.html 單檔讀 4 JSON、手機優先、台股紅漲綠跌、缺檔降級＋內嵌示意；Playwright 實測渲染五區塊正常。真實資料待 Phase 7 commit 產物＋Pages）

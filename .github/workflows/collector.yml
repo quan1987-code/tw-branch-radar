@@ -3,7 +3,10 @@ name: collector
 # 每日排程 + 手動觸發：抓取→SQLite→彙總 JSON→commit 產物（供公開 GitHub Pages）。
 on:
   schedule:
-    - cron: '0 12 * * 1-5'   # 週一至五 12:00 UTC（20:00 台北，收盤後資料已備）
+    # 台股收盤後（05:30 UTC）資料備妥的窗口內每 30 分推進一批（07–23 UTC，約 34 批/日）。
+    # 全市場回補期間（remaining>0）為純回補、不 commit；回補完成後（remaining=0）各次做便宜彙總，
+    # 資料未變則 no-op。約 3 日填滿 120 日全市場；填滿後即每日自動維護。
+    - cron: '*/30 7-23 * * *'
   workflow_dispatch:
     inputs:
       days:
@@ -11,9 +14,9 @@ on:
         required: false
         default: '120'
       branches:
-        description: '逗號分隔分點代碼 securities_trader_id（空=預設）'
+        description: "分點代碼 securities_trader_id（逗號分隔）；'ALL'=全市場；空=預設分點"
         required: false
-        default: ''
+        default: 'ALL'
       watchlist:
         description: '逗號分隔追蹤股票代碼（空=預設）'
         required: false
@@ -46,10 +49,10 @@ jobs:
       - name: Restore SQLite cache
         uses: actions/cache@v4
         with:
-          path: .cache            # 原始明細 DB 只存在這裡，不進 repo
-          key: branchdb-v1-${{ github.run_id }}
+          path: .cache            # 聚合明細 DB 只存在這裡，不進 repo
+          key: branchdb-v2-${{ github.run_id }}   # v2：branch_daily 改聚合 schema，與 v1 不相容
           restore-keys: |
-            branchdb-v1-
+            branchdb-v2-
 
       - name: Install deps
         run: pip install -r requirements.txt
@@ -58,10 +61,12 @@ jobs:
         env:
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}   # 需先於 repo 設定 secret
           MAX_REQ_PER_RUN: ${{ inputs.max_req || '2000' }}
+          RUN_BUDGET_SEC: '660'    # 牆鐘預算 11 分，留 4 分給裝依賴/存 cache，防 15 分逾時掉進度
+          QUOTA_MARGIN: '300'      # api 每小時剩餘 < 300 即停，防 FinMind 超限
         run: >
           python collector.py
           --days "${{ inputs.days || '120' }}"
-          --branches "${{ inputs.branches }}"
+          --branches "${{ inputs.branches || 'ALL' }}"
           --watchlist "${{ inputs.watchlist }}"
 
       - name: Upload data JSON (artifact)
@@ -75,12 +80,17 @@ jobs:
       - name: Commit 彙總 JSON 產物（供公開 Pages）
         if: always()
         run: |
+          REMAIN=$(cat .cache/remaining.txt 2>/dev/null || echo "unknown")
+          if [ "$REMAIN" != "0" ]; then
+            echo "回補未完成（remaining=$REMAIN），本次為純回補，略過 commit（僅存 artifact/cache）"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/*.json
           if git diff --quiet --cached; then
             echo "彙總資料無變更，略過 commit"
           else
-            git commit -m "chore(data): 每日更新彙總 JSON [skip ci]"
+            git commit -m "chore(data): 更新彙總 JSON [skip ci]"
             git push
           fi
