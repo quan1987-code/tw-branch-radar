@@ -146,7 +146,10 @@
   - 3B 全市場 ✅實作：`--branches ALL` 由 `TaiwanSecuritiesTraderInfo` 列舉全部分點；`backfill` 三守衛（`MAX_REQ_PER_RUN` 對數上限／`RUN_BUDGET_SEC` 牆鐘 660s／`QUOTA_MARGIN` api 剩餘 300）皆可續跑（增量零重抓）；`branch_daily` 改**聚合 schema**〔(分點,股,日) 買賣金額/股數，逐筆價位列寫入前 GROUP BY 折算，~20× 壓縮〕使全市場（實測 1020 單分點 120 日=60 萬逐筆列 → 聚合後大減）裝得進 actions/cache；回補未完成僅純回補、寫 `remaining.txt` 供 workflow gate（不 commit、不彙總）。cache key v2；離線測試 phase3/phase3b 全綠。
   - run #12 全市場首跑（實測校正）：分點宇宙 **1010 個**；發現並修正兩問題——(1) client `taiwan_stock_trading_daily_report(securities_trader_id,date)` 未給 stock_id 時會呼叫內部 `_get_stock_id_list(date)`，多抓 `TaiwanStockInfo`＋`TaiwanStockPrice`（**每對 3 次請求、~2.6s/對**），且同步路徑其實忽略該清單 → 傳非空 `stock_id_list` 哨符跳過之（**降回 1 請求/對、~3× 提速**）；(2) 錨定今日會抓到當日未結算資料，`_get_stock_id_list` 對空價格表取 `['stock_id','Trading_Volume']` 而崩潰、且存空會污染 `fetched_keys` → 預設**錨定昨天**（僅已結算日；`--anchor` 可覆寫）。另 `RUN_BUDGET_SEC` 660→600 留 cache 存取餘裕。修正後規模：1010×120≈12.1 萬對、~1 請求/對，每次 ~600–700 對、約 **180 次跑／~5 日**填滿。
   - run #13 修正版驗證 ✅ **通過**：錨定=2026-07-05（已結算，窗 2025-12-31~07-03）；**1.02 請求/對**（1200 對 1223 請求）、**0.45s/對**、本次 1323 對/600s、stop=time；cache 僅 **21.7 MB**（壓縮，聚合有效、離 10GB 極遠）；資料正確（1020×2303 淨買超=1,097,622,574 與舊逐筆版一致）；remaining=119877>0 故略過 commit。實測規模：每輪 ~1300 對 → **~90 輪／約 3 日**填滿。
-  - **已合併 main（6a53906，fast-forward，經使用者同意）＋啟用每 30 分 cron**；已手動觸發 main 首輪回補（cache 於 main 從空重建）。**進行中**：cron 每 30 分（全天候 48 批/日；錨定昨天故不限時段）自動續跑至 `remaining=0` → 自動彙總 1010 分點真排行/鉅額/大盤並 commit。**剩使用者動作**：Settings→Pages 啟用公開 Pages(main)。
+  - **已合併 main（fast-forward，經使用者同意）**；公開 Pages 已由使用者啟用、建置成功上線（顯示現有 1020 資料，回補完成會自動重部署升級）。
+  - run #14/#15/#16 實測：main 部署 OK、資料正確；但**發現 GitHub 自身對 `*/30` schedule cron 節流嚴重**——04:00–08:00 UTC 僅 firing 1 次（非每 30 分）。7.5h 只推進 4,080/121,200（remaining 119784→117120）。**瓶頸是「觸發頻率」非吞吐/額度**（每輪僅用 1,400/6,000 hr 額度、大量餘裕）。
+  - **對策（不動 15 分鐵律）**：新增 CCR 每小時可靠觸發器 `trig_01EHrH...`（cron `25 * * * *`，靜默 dispatch collector on main，不打擾使用者），繞過 GitHub 節流的 cron，穩定 ~1–2 輪/hr → 修正估計 **~3 日**填滿。GitHub `*/30` cron 保留為額外觸發。監測仍由每8小時 trigger `trig_01SL...` 負責、完成即時回報並清理兩個 trigger。
+  - **進行中**：續跑至 `remaining=0` → 自動彙總 1010 分點真排行/鉅額/大盤並 bot commit → Pages 自動重部署升級面板。
 - [x] Phase 4 功能 B 鉅額看板 ✅（run #10：全市場 41 筆＋折溢價，block_trade.json）
 - [x] Phase 5 功能 C 成交資訊 ✅（run #10：追蹤 7 檔價量＋TWSE 大盤，market.json）
 - [x] Phase 6 功能 D HTML 面板 ✅（index.html 單檔讀 4 JSON、手機優先、台股紅漲綠跌、缺檔降級＋內嵌示意；Playwright 實測渲染五區塊正常。真實資料待 Phase 7 commit 產物＋Pages）
