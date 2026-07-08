@@ -1,7 +1,7 @@
 # PLAN.md — tw-branch-radar 台股分點雷達
 
 > 本檔為進度主檔。每完成一段即更新「進度追蹤」勾選並 commit+push（雲端環境：存檔＝commit+push）。
-> Session 開頭先讀本檔續作。狀態：**Phase 1、2、3A、4、5 ✅ 完成（Actions run #5–#10 實跑驗收）。collector 產出 4 個 JSON：status/ranking/block_trade/market。實測定案：分點非彙總逐筆精算；勝率＝事件+5日close+Wilson（合庫1020 勝率54.8%）；鉅額全市場空stock_id可查+折溢價；大盤 TWSE FMTQIK（鍵 TAIEX/TradeValue/Change…）。Sponsor 上限=6000。Phase 6/7 ✅ 完成（PR #2/#3 併入 main）。Phase 3B 全市場回補 ✅實作（--branches ALL 列舉全部分點＋backfill 三守衛＋branch_daily 聚合 schema），待 Actions 實跑填滿（每 30 分推進、約 3 日）後自動彙總多分點真排行。**
+> Session 開頭先讀本檔續作。狀態：**Phase 1、2、3A、4、5 ✅ 完成（Actions run #5–#10 實跑驗收）。collector 產出 4 個 JSON：status/ranking/block_trade/market。實測定案：分點非彙總逐筆精算；勝率＝事件+5日close+Wilson（合庫1020 勝率54.8%）；鉅額全市場空stock_id可查+折溢價；大盤 TWSE FMTQIK（鍵 TAIEX/TradeValue/Change…）。Sponsor 上限=6000。Phase 6/7 ✅ 完成（PR #2/#3 併入 main）。Phase 3B 全市場回補 ✅**完成（2026-07-08）**：1010 分點×120 交易日填滿（`remaining=0`、聚合約 7,785 萬列），bot commit `7744bab` 自動彙總並重部署 Pages，全市場勝率排行 **877 分點入榜**（TOP：918X 群益台北 Wilson56.7%）。此後每日自動維護。**
 
 ---
 
@@ -141,7 +141,7 @@
 - [x] Phase 0 資料查證（本檔資料清單）
 - [x] Phase 1 最小垂直切片 ✅（Actions run #5 冷跑抓 07-01/02/03 共 5007/4473/5626 列、run #6 熱跑增量零重抓；印出 api 上限=6000；輸出 data/phase1_sample.json top50；單次 <15 分；三次失敗迭代已釐清正確 dataset 取法）
 - [x] Phase 2 增量 + 交易日曆 + 120 日回補 ✅（run #7：`TaiwanStockTradingDate` 取 120 交易日、分點 1020 回補全涵蓋、6 分鐘 <15 分；run #8：重跑零重抓；分批續跑機制離線＋設計驗證）
-- [~] Phase 3 功能 A 勝率排行
+- [x] Phase 3 功能 A 勝率排行 ✅（3A 演算法 + 3B 全市場回補均完成）
   - 3A 演算法 ✅ run #9：合庫1020 勝率54.8%/Wilson0.532/事件3693。
   - 3B 全市場 ✅實作：`--branches ALL` 由 `TaiwanSecuritiesTraderInfo` 列舉全部分點；`backfill` 三守衛（`MAX_REQ_PER_RUN` 對數上限／`RUN_BUDGET_SEC` 牆鐘 660s／`QUOTA_MARGIN` api 剩餘 300）皆可續跑（增量零重抓）；`branch_daily` 改**聚合 schema**〔(分點,股,日) 買賣金額/股數，逐筆價位列寫入前 GROUP BY 折算，~20× 壓縮〕使全市場（實測 1020 單分點 120 日=60 萬逐筆列 → 聚合後大減）裝得進 actions/cache；回補未完成僅純回補、寫 `remaining.txt` 供 workflow gate（不 commit、不彙總）。cache key v2；離線測試 phase3/phase3b 全綠。
   - run #12 全市場首跑（實測校正）：分點宇宙 **1010 個**；發現並修正兩問題——(1) client `taiwan_stock_trading_daily_report(securities_trader_id,date)` 未給 stock_id 時會呼叫內部 `_get_stock_id_list(date)`，多抓 `TaiwanStockInfo`＋`TaiwanStockPrice`（**每對 3 次請求、~2.6s/對**），且同步路徑其實忽略該清單 → 傳非空 `stock_id_list` 哨符跳過之（**降回 1 請求/對、~3× 提速**）；(2) 錨定今日會抓到當日未結算資料，`_get_stock_id_list` 對空價格表取 `['stock_id','Trading_Volume']` 而崩潰、且存空會污染 `fetched_keys` → 預設**錨定昨天**（僅已結算日；`--anchor` 可覆寫）。另 `RUN_BUDGET_SEC` 660→600 留 cache 存取餘裕。修正後規模：1010×120≈12.1 萬對、~1 請求/對，每次 ~600–700 對、約 **180 次跑／~5 日**填滿。
@@ -149,11 +149,12 @@
   - **已合併 main（fast-forward，經使用者同意）**；公開 Pages 已由使用者啟用、建置成功上線（顯示現有 1020 資料，回補完成會自動重部署升級）。
   - run #14/#15/#16 實測：main 部署 OK、資料正確；但**發現 GitHub 自身對 `*/30` schedule cron 節流嚴重**——04:00–08:00 UTC 僅 firing 1 次（非每 30 分）。7.5h 只推進 4,080/121,200（remaining 119784→117120）。**瓶頸是「觸發頻率」非吞吐/額度**（每輪僅用 1,400/6,000 hr 額度、大量餘裕）。
   - **對策（不動 15 分鐵律）**：新增 CCR 每小時可靠觸發器 `trig_01EHrH...`（cron `25 * * * *`，靜默 dispatch collector on main，不打擾使用者），繞過 GitHub 節流的 cron，穩定 ~1–2 輪/hr → 修正估計 **~3 日**填滿。GitHub `*/30` cron 保留為額外觸發。監測仍由每8小時 trigger `trig_01SL...` 負責、完成即時回報並清理兩個 trigger。
-  - **進行中**：續跑至 `remaining=0` → 自動彙總 1010 分點真排行/鉅額/大盤並 bot commit → Pages 自動重部署升級面板。
+  - ✅ **完成（2026-07-08）**：回補填滿 `remaining=0`（`branch_coverage`=**1010 分點**×120 交易日 2026-01-05~07-07、聚合約 **7,785 萬列**）；collector 自動彙總並 bot commit `7744bab chore(data): 更新彙總 JSON` 至 main → Pages 自動重部署升級面板。全市場勝率排行 **877 分點入榜**（達 `min_events`≥10）；TOP（Wilson 下界）：918X 群益台北 56.7%、9100 群益 55.3%、8880 國泰綜合 55.2%、9833 元大敦化 55.0%、9800 元大 54.7%。
+  - 加速實測結論：GitHub `*/30` schedule cron 節流嚴重（每數小時才 1 次），靠 **CCR 每小時＋每 20 分推進器（主/B/C）**密集 `workflow_dispatch` 吃滿 FinMind 6000/hr；github MCP 間歇斷連期間改用**本地 `git fetch origin main` 讀 `data/ranking.json`（`branches_ranked`>1）作完成偵測**、繞過 MCP。峰值單輪跑滿 40 分 ~6,400 對/時。此後每日自動維護（錨定昨日結算資料、便宜彙總、資料未變 no-op）。回補完成後應刪除三個推進器＋每8小時監測 CCR trigger。
 - [x] Phase 4 功能 B 鉅額看板 ✅（run #10：全市場 41 筆＋折溢價，block_trade.json）
 - [x] Phase 5 功能 C 成交資訊 ✅（run #10：追蹤 7 檔價量＋TWSE 大盤，market.json）
 - [x] Phase 6 功能 D HTML 面板 ✅（index.html 單檔讀 4 JSON、手機優先、台股紅漲綠跌、缺檔降級＋內嵌示意；Playwright 實測渲染五區塊正常。真實資料待 Phase 7 commit 產物＋Pages）
-- [~] Phase 7 Actions 排程 + 部署（cron **每 30 分全天候**＋commit data/*.json，gate 於 `.cache/remaining.txt==0`：回補中純回補不 commit、填滿後每輪彙總；run #11 已驗證 bot commit「chore(data)」機制。程式**已於 main（6a53906）生效**。**剩使用者動作**：Settings→Pages 啟用公開 Pages(main)）
+- [x] Phase 7 Actions 排程 + 部署 ✅（cron **每 30 分全天候**＋commit data/*.json，gate 於 `.cache/remaining.txt==0`：回補中純回補不 commit、填滿後每輪彙總；run #11 驗證 bot commit「chore(data)」機制、`7744bab` 為實際完成提交。程式於 main 生效；公開 Pages(main) 已由使用者啟用、建置上線；全市場資料已於 2026-07-08 自動 commit＋重部署）
 
 ---
 
