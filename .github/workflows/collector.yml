@@ -36,7 +36,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15     # 鐵律：單次執行以 15 分鐘為上限
+    timeout-minutes: 50     # 抓取預算 40 分（RUN_BUDGET_SEC）＋10 分收尾/存 cache，永不硬逾時掉進度
     steps:
       - uses: actions/checkout@v4
 
@@ -60,9 +60,9 @@ jobs:
       - name: Run collector
         env:
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}   # 需先於 repo 設定 secret
-          MAX_REQ_PER_RUN: ${{ inputs.max_req || '2000' }}
-          RUN_BUDGET_SEC: '600'    # 牆鐘預算 10 分，留 5 分給裝依賴/cache 存取（DB 漸大），防 15 分逾時掉進度
-          QUOTA_MARGIN: '300'      # api 每小時剩餘 < 300 即停，防 FinMind 超限
+          MAX_REQ_PER_RUN: ${{ inputs.max_req || '10000' }}  # 對數上限放寬，讓每輪能吃滿一小時 FinMind 額度
+          RUN_BUDGET_SEC: '2400'   # 牆鐘預算 40 分：一輪抓到 FinMind 額度用盡(~5700 對)或 40 分為止
+          QUOTA_MARGIN: '300'      # api 每小時剩餘 < 300 即停，防 FinMind 超限（此為真正的節流點）
         run: >
           python collector.py
           --days "${{ inputs.days || '120' }}"
