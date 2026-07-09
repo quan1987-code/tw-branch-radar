@@ -1,220 +1,380 @@
-<!-- tw-branch-radar 台股分點雷達 · 單檔面板（讀 data/*.json）
-     手機優先。資料由 GitHub Actions 每日更新產出 data/*.json。
-     台股配色：紅=漲/溢價、綠=跌/折價。 -->
+<!doctype html>
+<html lang="zh-Hant" data-updown="tw">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>台股分點雷達</title>
+<title>分點波段 Edge · 戰情室</title>
 <style>
   :root{
-    --bg:#0e1116; --card:#171b22; --card2:#1e232c; --line:#2a313c;
-    --fg:#e6e9ee; --mut:#98a2b3; --acc:#3b82f6;
-    --up:#ef4444; --down:#22c55e; --warn:#f59e0b;
+    --paper:#FBFAF7; --panel:#FFFFFF; --ink:#161514; --ink-2:#5F5B54;
+    --ink-3:#9A948A; --line:#E9E6DF; --line-2:#DAD6CD;
+    --up:#C4302B; --down:#1E874B;
+    --amber:#B07A12; --chip:#F2EFE8; --hit:#161514;
+    --r:10px; --mono:"SFMono-Regular",ui-monospace,"Menlo",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC",
+           "Microsoft JhengHei",system-ui,"Helvetica Neue",sans-serif;
   }
-  @media (prefers-color-scheme: light){
-    :root{ --bg:#f4f6f9; --card:#fff; --card2:#f0f3f7; --line:#e3e8ef;
-           --fg:#1a2230; --mut:#5b6675; --acc:#2563eb; }
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",Roboto,sans-serif;
-    line-height:1.45;-webkit-text-size-adjust:100%}
-  header{padding:18px 16px 8px;position:sticky;top:0;background:linear-gradient(var(--bg),var(--bg) 70%,transparent);z-index:5}
-  h1{font-size:20px;margin:0;letter-spacing:.5px}
-  .sub{color:var(--mut);font-size:12px;margin-top:3px}
-  main{padding:8px 12px 40px;max-width:820px;margin:0 auto}
-  section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0;overflow:hidden}
-  h2{font-size:15px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
-  h2 .tag{font-size:11px;color:var(--mut);font-weight:400;margin-left:auto}
-  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px}
-  .tile{background:var(--card2);border-radius:10px;padding:10px 12px}
-  .tile .k{color:var(--mut);font-size:11px}
-  .tile .v{font-size:18px;font-weight:650;margin-top:2px;font-variant-numeric:tabular-nums}
-  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px}
-  table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
-  th,td{padding:8px 8px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
-  th:first-child,td:first-child{text-align:left}
-  th{color:var(--mut);font-weight:500;font-size:11px;position:sticky;top:0;background:var(--card)}
-  tbody tr:last-child td{border-bottom:none}
-  .up{color:var(--up)} .down{color:var(--down)} .mut{color:var(--mut)}
-  .pill{display:inline-block;padding:2px 7px;border-radius:999px;font-size:11px;font-weight:600}
-  .bar{height:6px;border-radius:3px;background:var(--card2);overflow:hidden;min-width:54px}
-  .bar>i{display:block;height:100%;background:var(--acc)}
-  .empty{color:var(--mut);font-size:13px;padding:10px 2px}
-  .banner{background:var(--warn);color:#111;font-size:12px;text-align:center;padding:6px;border-radius:8px;margin:6px 0}
-  footer{color:var(--mut);font-size:11px;text-align:center;padding:16px 12px 28px;line-height:1.7}
-  a{color:var(--acc)}
+  html[data-updown="us"]{ --up:#1E874B; --down:#C4302B; }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);
+    font-variant-numeric:tabular-nums;-webkit-text-size-adjust:100%;line-height:1.5;
+    padding:env(safe-area-inset-top) 0 0;}
+  .wrap{max-width:680px;margin:0 auto;padding:18px 16px 40px}
+
+  .head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .title{font-size:19px;font-weight:700;letter-spacing:.2px;margin:0}
+  .sub{color:var(--ink-2);font-size:12.5px;margin:3px 0 0}
+  .head-r{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+  .ud,.lnk{border:1px solid var(--line-2);background:var(--panel);border-radius:999px;
+      font:inherit;font-size:12px;color:var(--ink-2);padding:5px 11px;cursor:pointer;
+      white-space:nowrap;min-height:32px;text-decoration:none;display:inline-flex;align-items:center}
+  .ud b{color:var(--ink)}
+
+  /* horizon 切換 */
+  .hz{display:inline-flex;border:1px solid var(--line-2);border-radius:999px;overflow:hidden;background:var(--panel)}
+  .hz button{appearance:none;background:none;border:0;font:inherit;font-size:12.5px;color:var(--ink-3);
+    padding:6px 14px;cursor:pointer;min-height:32px;font-weight:600}
+  .hz button[aria-pressed="true"]{background:var(--hit);color:#fff}
+
+  .diag{margin:16px 0 6px;border:1px solid var(--line);border-radius:var(--r);
+        background:var(--panel);padding:12px 12px 10px}
+  .diag-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 8px}
+  .kv{min-width:0}
+  .kv .k{font-size:11px;color:var(--ink-3);letter-spacing:.3px}
+  .kv .v{font-size:16px;font-weight:650}
+  .diag-note{margin-top:10px;padding-top:9px;border-top:1px dashed var(--line-2);
+             font-size:11.5px;color:var(--ink-2);display:flex;gap:7px}
+  .diag-note::before{content:"※";color:var(--ink-3)}
+
+  .tabs{display:flex;gap:2px;margin:16px 0 14px;border-bottom:1px solid var(--line);overflow-x:auto}
+  .tab{appearance:none;background:none;border:0;font:inherit;font-size:13.5px;color:var(--ink-3);
+       padding:9px 12px;cursor:pointer;position:relative;min-height:42px;font-weight:550;white-space:nowrap}
+  .tab[aria-selected="true"]{color:var(--ink)}
+  .tab[aria-selected="true"]::after{content:"";position:absolute;left:10px;right:10px;
+       bottom:-1px;height:2px;background:var(--hit);border-radius:2px}
+  .panel[hidden]{display:none}
+
+  /* 近期進場標的（可操作卡）*/
+  .pick{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);
+        padding:13px 14px;margin-bottom:10px}
+  .pick-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .pick .sid{font-size:18px;font-weight:750;letter-spacing:.3px}
+  .pick .via{font-size:12px;color:var(--ink-2)}
+  .pick .via b{color:var(--ink)}
+  .pick .run{margin-left:auto;font-size:20px;font-weight:750}
+  .pick .run .rl{font-size:10.5px;color:var(--ink-3);font-weight:500;display:block;text-align:right}
+  .pick-meta{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:9px;font-size:11.5px;color:var(--ink-2)}
+  .pick-meta span b{color:var(--ink);font-weight:650}
+  .cred{display:flex;flex-wrap:wrap;gap:4px;margin-top:9px}
+  .badge{font-size:10.5px;padding:2px 7px;border-radius:999px;background:var(--chip);
+         color:var(--ink-2);border:1px solid var(--line-2);white-space:nowrap}
+  .badge.ok{color:#fff;background:var(--hit);border-color:var(--hit)}
+  .badge.a{color:var(--amber);border-color:#E4D2A6;background:#FBF6E9}
+
+  .card{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:14px;margin-bottom:12px}
+  .card-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .bname{font-size:15.5px;font-weight:700} .bid{font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+  .chip{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--chip);color:var(--ink-2);
+        border:1px solid var(--line-2);line-height:1.6}
+  .chip.hedge{color:var(--amber);border-color:#E4D2A6;background:#FBF6E9}
+  .chip.watch{margin-left:auto;color:#fff;background:var(--hit);border-color:var(--hit)}
+  .hero{display:flex;align-items:flex-end;gap:12px;margin:12px 0 4px}
+  .hero .big{font-size:30px;font-weight:750;line-height:1;letter-spacing:-.5px}
+  .hero .lbl{font-size:11.5px;color:var(--ink-3);margin-bottom:3px}
+  .pos{color:var(--up)} .neg{color:var(--down)}
+  .ci{margin:8px 0 2px}
+  .ci-track{position:relative;height:26px;border-radius:6px;background:#F5F3ED;border:1px solid var(--line);overflow:hidden}
+  .ci-zero{position:absolute;top:0;bottom:0;width:1px;background:var(--ink-3);opacity:.7}
+  .ci-fill{position:absolute;top:6px;bottom:6px;border-radius:3px;opacity:.28}
+  .ci-fill.pos{background:var(--up)} .ci-fill.neg{background:var(--down)}
+  .ci-pt{position:absolute;top:2px;bottom:2px;width:2px;border-radius:2px}
+  .ci-pt.pos{background:var(--up)} .ci-pt.neg{background:var(--down)}
+  .ci-cap{display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-3);margin-top:4px}
+  .mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:12px;
+         background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .m{background:var(--panel);padding:9px 8px;text-align:center;min-width:0}
+  .m .mk{font-size:10.5px;color:var(--ink-3);white-space:nowrap}
+  .m .mv{font-size:15px;font-weight:650;margin-top:2px} .m .mv.sm{font-size:13px}
+  .flag{font-size:11px;font-weight:700} .flag.on{color:var(--up)} .flag.off{color:var(--ink-3)}
+
+  .empty{border:1px dashed var(--line-2);border-radius:var(--r);background:var(--panel);
+         padding:22px 16px;text-align:center;color:var(--ink-2);font-size:13px}
+  .empty b{color:var(--ink)}
+
+  .twrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:var(--r)}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;min-width:540px}
+  th,td{padding:9px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--panel)}
+  thead th{background:var(--panel);color:var(--ink-2);font-weight:600;cursor:pointer;font-size:11.5px;
+           user-select:none;border-bottom:1px solid var(--line-2)}
+  tbody tr:last-child td{border-bottom:0}
+  td .t-name{font-weight:600} td .t-id{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);margin-left:5px}
+  .yn{font-weight:700}.yn.y{color:var(--up)}.yn.n{color:var(--ink-3)}
+
+  .method h3{font-size:13.5px;margin:16px 0 6px;font-weight:700}
+  .method p,.method li{font-size:12.5px;color:var(--ink-2);margin:5px 0}
+  .method b{color:var(--ink)} .method ul{margin:5px 0;padding-left:18px}
+  .warn{border-left:2px solid var(--amber);background:#FBF6E9;padding:9px 12px;border-radius:0 8px 8px 0;
+        font-size:12.5px;color:#6b5410;margin:8px 0} .warn b{color:#4d3c08}
+  .foot{margin-top:22px;padding-top:12px;border-top:1px solid var(--line);font-size:11px;color:var(--ink-3);
+        display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  :focus-visible{outline:2px solid var(--hit);outline-offset:2px;border-radius:4px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  @media (max-width:420px){ .diag-grid{grid-template-columns:repeat(2,1fr)} .hero .big{font-size:26px} }
 </style>
+</head>
+<body>
+<div class="wrap">
+  <header class="head">
+    <div>
+      <h1 class="title">分點波段 Edge</h1>
+      <p class="sub">高 edge 分點近期買了誰——以超額報酬 α＋走查＋FDR 篩出可外推的佈局訊號</p>
+    </div>
+    <div class="head-r">
+      <div class="hz" id="hz" role="group" aria-label="持有天數">
+        <button data-h="5"  aria-pressed="true">5 日</button>
+        <button data-h="10" aria-pressed="false">10 日</button>
+      </div>
+      <div style="display:flex;gap:6px">
+        <a class="lnk" href="overview.html">總覽</a>
+        <button class="ud" id="ud" type="button" aria-label="切換漲跌顏色">漲跌色 <b id="udlab">台</b></button>
+      </div>
+    </div>
+  </header>
 
-<header>
-  <h1>台股分點雷達 <span style="font-size:13px;color:var(--mut)">Branch Radar</span></h1>
-  <div class="sub" id="asof">載入中…</div>
-</header>
+  <section class="diag" id="diag" aria-label="回測診斷"></section>
 
-<main>
-  <div id="fallbackBanner" style="display:none" class="banner">示意資料 · 實際數據由 GitHub Actions 每日更新</div>
+  <nav class="tabs" role="tablist" aria-label="檢視">
+    <button class="tab" role="tab" data-tab="live"   aria-selected="true">近期進場標的</button>
+    <button class="tab" role="tab" data-tab="watch"  aria-selected="false">值得追蹤分點</button>
+    <button class="tab" role="tab" data-tab="all"    aria-selected="false">全部分點</button>
+    <button class="tab" role="tab" data-tab="method" aria-selected="false">方法與警語</button>
+  </nav>
 
-  <!-- SECTION: 大盤 + 成交（Phase 5 · market.json） -->
-  <section id="s-market">
-    <h2>大盤成交 <span class="tag" id="market-date"></span></h2>
-    <div class="tiles" id="market-tiles"></div>
-    <div style="margin-top:12px"></div>
-    <h2 style="font-size:13px">追蹤清單</h2>
-    <div class="scroll"><table id="watch"><thead><tr>
-      <th>股票</th><th>收盤</th><th>漲跌幅</th><th>開</th><th>高</th><th>低</th><th>成交量(張)</th>
-    </tr></thead><tbody></tbody></table></div>
+  <section class="panel" id="p-live"  role="tabpanel"></section>
+  <section class="panel" id="p-watch" role="tabpanel" hidden></section>
+  <section class="panel" id="p-all"   role="tabpanel" hidden></section>
+  <section class="panel method" id="p-method" role="tabpanel" hidden>
+    <h3>它在回答什麼</h3>
+    <p>「哪些分點的<b>大額買超</b>，對之後的<b>波段</b>有真實正向 edge、值得追蹤；而這些分點<b>最近買了哪些股</b>」——不是按歷史勝率排一份多半無法外推的名單。</p>
+    <h3>口徑</h3>
+    <ul>
+      <li><b>事件</b>：分點單日對單股淨買超金額 ≥ 門檻（預設 500 萬）。</li>
+      <li><b>報酬</b>：用<b>超額報酬 α</b>（個股 − 大盤 0050 同窗），已扣來回成本、進場延遲一天（分點 T+1 揭露）。勝以 <b>α&gt;0</b> 計，不用「收盤變高」——後者在多頭時任何隨機買點都 &gt;50%。</li>
+      <li><b>持有天數</b>：<b>5 日與 10 日兩種、分開顯示</b>（右上切換）。</li>
+      <li><b>走查</b>：前段（IS）選候選、後段（OOS）驗證；兩段都通過才算數。</li>
+      <li><b>FDR</b>：上千分點同時比較，靠運氣也有人亮眼；以 Benjamini-Hochberg 校正多重比較。</li>
+      <li><b>分類</b>：佈局／中性／隔沖，看<b>持有行為</b>（買後是否倒貨）。</li>
+      <li><b>值得追蹤</b> ＝ 佈局 ∩ OOS 通過 ∩ FDR 顯著（嚴格門檻）。</li>
+      <li><b>近期進場標的</b> ＝ 值得追蹤分點在最近 N 個交易日的大額買進、且尚未倒貨者；附進場後至今的 α（未滿持有窗、僅供觀察）。</li>
+    </ul>
+    <h3>三個必讀警語</h3>
+    <div class="warn"><b>OOS 通過 ≠ 真有 edge。</b>「全部分點」表裡好幾個雜訊分點也能 OOS 亮眼（靠運氣），只有再過 FDR 才留得下。這是「值得追蹤」比排行嚴格得多的原因。</div>
+    <div class="warn"><b>名單為空是正常結果。</b>某期沒有分點同時通過三關，多半代表波段尺度上分點訊號本就是雜訊，而非程式或資料出錯。IS↔OOS 名次相關越接近 0，越說明「過去幾乎不能預測未來」。</div>
+    <div class="warn"><b>近期進場標的的 α 是「進行中」。</b>那些買進尚未滿持有窗，run α 只是至今走勢、非最終績效；它是「該不該把這檔放進研究清單」的起點，不是買賣訊號。</div>
+    <p style="margin-top:12px">統計細節：持有窗重疊使 p 值偏樂觀，上線前建議把顯著性改為 block-bootstrap 或按日期叢集，並以更長歷史複驗。</p>
+    <div id="params" style="margin-top:12px"></div>
   </section>
 
-  <!-- SECTION: 高勝率分點排行（Phase 3 · ranking.json） -->
-  <section id="s-rank">
-    <h2>高勝率分點排行 <span class="tag" id="rank-params"></span></h2>
-    <div class="scroll"><table id="rank"><thead><tr>
-      <th>分點</th><th>勝率</th><th>Wilson</th><th>勝/可評</th><th>事件</th>
-    </tr></thead><tbody></tbody></table></div>
-    <div class="empty" id="rank-note" style="display:none"></div>
-  </section>
+  <footer class="foot">
+    <span>資料來源：FinMind · 僅供研究，非投資建議</span>
+    <span id="gen"></span>
+  </footer>
+</div>
 
-  <!-- SECTION: 鉅額交易看板（Phase 4 · block_trade.json） -->
-  <section id="s-block">
-    <h2>鉅額交易 <span class="tag" id="block-date"></span></h2>
-    <div class="scroll"><table id="block"><thead><tr>
-      <th>日期</th><th>股票</th><th>交易別</th><th>成交價</th><th>收盤</th><th>折溢價</th><th>成交金額</th>
-    </tr></thead><tbody></tbody></table></div>
-    <div class="empty" id="block-note" style="display:none"></div>
-  </section>
-
-  <!-- SECTION: 當日大額買超（Phase 2 · status.json top_net_buy） -->
-  <section id="s-top">
-    <h2>分點大額買超 top <span class="tag" id="top-range"></span></h2>
-    <div class="scroll"><table id="top"><thead><tr>
-      <th>日期</th><th>分點</th><th>股票</th><th>淨買超(億)</th><th>買(張)</th><th>賣(張)</th>
-    </tr></thead><tbody></tbody></table></div>
-  </section>
-</main>
-
-<footer>
-  資料來源：<b>FinMind</b>（<a href="https://finmind.github.io/">finmind.github.io</a>）· 大盤成交資訊：<b>臺灣證券交易所 TWSE</b><br>
-  僅供個人非商業用途參考，不構成投資建議。台股配色：<span class="up">紅=漲/溢價</span> · <span class="down">綠=跌/折價</span>
-</footer>
-
-<!-- SECTION: script — 載入 data/*.json（失敗則用內嵌示意資料）並渲染 -->
 <script>
-const FALLBACK = {
-  ranking:{phase:3,params:{lookback_days:120,event_min_amount:5000000,hold_days:5,min_events:10},
-    branches_considered:1,branches_ranked:1,
-    ranking:[{securities_trader_id:"1020",securities_trader:"合庫",events:3693,evaluable:3564,wins:1954,pending:129,win_rate:0.5483,wilson_lb:0.532}]},
-  status:{trading_days_range:["2025-12-31","2026-07-03"],total_rows:601826,
-    top_net_buy:[
-      {date:"2026-06-24",securities_trader_id:"1020",securities_trader:"合庫",stock_id:"2303",net_amount:1097622574,buy_shares:6641280,sell_shares:316941},
-      {date:"2026-01-16",securities_trader_id:"1020",securities_trader:"合庫",stock_id:"2603",net_amount:953551950,buy_shares:5006300,sell_shares:23600},
-      {date:"2026-03-04",securities_trader_id:"1020",securities_trader:"合庫",stock_id:"3008",net_amount:661933655,buy_shares:282407,sell_shares:5},
-      {date:"2026-03-09",securities_trader_id:"1020",securities_trader:"合庫",stock_id:"2330",net_amount:627162870,buy_shares:387026,sell_shares:37561},
-      {date:"2026-03-03",securities_trader_id:"1020",securities_trader:"合庫",stock_id:"3008",net_amount:597074690,buy_shares:245190,sell_shares:1100}]},
-  block:{block_trades:[
-    {date:"2026-07-03",stock_id:"2330",trade_type:"一般",price:1010,close:1000,premium_discount:0.01,trading_money:505000000},
-    {date:"2026-07-03",stock_id:"2317",trade_type:"一般",price:98,close:100,premium_discount:-0.02,trading_money:98000000}]},
-  market:{as_of:"2026-07-03",
-    market_twse_fmtqik:{Date:"1150703",TAIEX:"23000.00",TradeValue:"420000000000",Change:"+150.00"},
-    quotes:[{stock_id:"2330",close:1000,spread:1.5,open:990,max:1010,min:985,trading_volume:32000000},
-            {stock_id:"2317",close:100,spread:-0.8,open:101,max:102,min:99,trading_volume:41000000}]}
+/* ── 示範資料（fetch data/branch_edge.json 失敗時 fallback；結構同真實輸出）── */
+const DEMO = {"_demo":true,"generated_at":"2025-01-01T00:00:00","benchmark_ready":true,
+ "params":{"horizons":[5,10],"event_min_value":5000000,"entry_lag":1,"cost_roundtrip":0.006,
+   "min_events_total":20,"min_events_is":12,"min_events_oos":6,"is_fraction":0.67,"fdr_alpha":0.10,
+   "benchmark_id":"0050","live_window":10},
+ "trading_days_range":["2025-01-02","2025-06-30"],
+ "by_horizon":{
+  "5":{"horizon":5,"diagnostics":{"n_branches_tested":842,"n_fdr_pass":1,"n_oos_pass":6,
+        "fdr_crit_p":0.0001,"is_oos_rank_spearman":0.04,"is_cut_date":"2025-04-15",
+        "caveat":"持有窗重疊使 p 值偏樂觀；建議改 block-bootstrap 並以更長歷史複驗"},
+    "watchlist":[{"broker_id":"SKILL","broker_name":"示範高手分點","n_events":41,"win_excess":0.71,
+        "mean_alpha":0.032,"alpha_ci_lo":0.012,"alpha_ci_hi":0.052,"p_alpha":0.002,
+        "is_mean_alpha":0.030,"oos_win_excess":0.68,"oos_mean_alpha":0.028,"oos_pass":true,
+        "fdr_pass":true,"label":"佈局","dump_ratio":0.02}],
+    "all_ranked":[{"broker_id":"SKILL","broker_name":"示範高手分點","n_events":41,"win_excess":0.71,
+        "mean_alpha":0.032,"p_alpha":0.002,"oos_win_excess":0.68,"oos_pass":true,"fdr_pass":true,
+        "label":"佈局","dump_ratio":0.02},
+      {"broker_id":"N7","broker_name":"雜訊分點(示範)","n_events":33,"win_excess":0.61,"mean_alpha":0.018,
+        "p_alpha":0.041,"oos_win_excess":0.6,"oos_pass":true,"fdr_pass":false,"label":"佈局","dump_ratio":0.1}],
+    "live_picks":[{"broker_id":"SKILL","broker_name":"示範高手分點","stock_id":"2330","event_date":"2025-06-26",
+        "entry_date":"2025-06-27","net_value":88000000,"days_since":2,"horizon":5,"run_ret":0.021,"run_alpha":0.014}]},
+  "10":{"horizon":10,"diagnostics":{"n_branches_tested":842,"n_fdr_pass":0,"n_oos_pass":4,
+        "fdr_crit_p":0.0,"is_oos_rank_spearman":-0.01,"is_cut_date":"2025-04-15",
+        "caveat":"持有窗重疊使 p 值偏樂觀；建議改 block-bootstrap 並以更長歷史複驗"},
+    "watchlist":[],"all_ranked":[{"broker_id":"N7","broker_name":"雜訊分點(示範)","n_events":30,
+        "win_excess":0.57,"mean_alpha":0.011,"p_alpha":0.09,"oos_win_excess":0.55,"oos_pass":true,
+        "fdr_pass":false,"label":"佈局","dump_ratio":0.1}],"live_picks":[]}}};
+
+const isNum=v=>typeof v==="number"&&!Number.isNaN(v);
+const pct=(v,d=1)=>isNum(v)?(v*100).toFixed(d)+"%":"—";
+const spct=(v,d=1)=>isNum(v)?(v>=0?"+":"")+(v*100).toFixed(d)+"%":"—";
+const fp=v=>!isNum(v)?"—":v<0.001?"<.001":v.toFixed(3).replace(/^0/,"");
+const sgn=v=>isNum(v)&&v<0?"neg":"pos";
+const esc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const money=v=>!isNum(v)?"—":v>=1e8?(v/1e8).toFixed(2)+"億":(v/1e4).toFixed(0)+"萬";
+const CI_MIN=-0.10,CI_MAX=0.15,CI_SPAN=CI_MAX-CI_MIN;
+const clampL=v=>Math.max(0,Math.min(100,(v-CI_MIN)/CI_SPAN*100));
+
+let RAW=null, H="5";
+
+function blk(){ return (RAW.by_horizon&&RAW.by_horizon[H])||{diagnostics:{},watchlist:[],all_ranked:[],live_picks:[]}; }
+
+function renderDiag(d){
+  const rho=isNum(d.is_oos_rank_spearman)?d.is_oos_rank_spearman.toFixed(2):"—";
+  const cells=[["受測分點",d.n_branches_tested],["通過 FDR",d.n_fdr_pass],["通過 OOS",d.n_oos_pass],
+    ["IS↔OOS 名次相關",rho],["走查切點",d.is_cut_date||"—"],
+    ["FDR 臨界 p",isNum(d.fdr_crit_p)?d.fdr_crit_p.toFixed(4).replace(/^0/,""):"—"]];
+  document.getElementById("diag").innerHTML=
+    `<div class="diag-grid">`+cells.map(([k,v])=>`<div class="kv"><div class="k">${k}</div><div class="v">${v==null?"—":v}</div></div>`).join("")+
+    `</div>`+(d.caveat?`<div class="diag-note">${esc(d.caveat)}</div>`:"");
+}
+
+/* 近期進場標的（可操作） */
+function renderLive(){
+  const b=blk(), live=b.live_picks||[], watch=b.watchlist||[];
+  const cred={}; (b.all_ranked||[]).forEach(r=>cred[r.broker_id]=r);
+  const el=document.getElementById("p-live");
+  if(!live.length){
+    el.innerHTML=`<div class="empty">${watch.length
+      ? `<b>值得追蹤分點近 ${RAW.params?.live_window??10} 個交易日無新的大額買進。</b><br>切到「值得追蹤分點」看它們的歷史 edge，或切換持有天數。`
+      : `<b>本期無分點同時通過 佈局 × OOS × FDR（H=${H} 日）。</b><br>故無近期進場標的——這在波段尺度是正常結果（分點訊號多為雜訊）。<br>可切換 5/10 日，或到「全部分點」看誰接近門檻。`}</div>`;
+    return;
+  }
+  el.innerHTML=`<p class="sub" style="margin:0 0 10px">${watch.length} 個嚴格門檻分點在最近 ${RAW.params?.live_window??10} 日的大額買進、尚未倒貨；進場後 α 為進行中，僅供鎖定研判。</p>`+
+    live.map(p=>{
+      const c=cred[p.broker_id]||{}, rc=sgn(p.run_alpha);
+      return `<article class="pick">
+        <div class="pick-top">
+          <span class="sid">${esc(p.stock_id)}</span>
+          <span class="via">by <b>${esc(p.broker_name||p.broker_id)}</b> <span class="bid">${esc(p.broker_id)}</span></span>
+          <span class="run ${rc}">${spct(p.run_alpha)}<span class="rl">進場後 α（${p.days_since} 日）</span></span>
+        </div>
+        <div class="pick-meta">
+          <span>買超 <b>${money(p.net_value)}</b></span>
+          <span>事件日 <b>${esc(p.event_date)}</b></span>
+          <span>進場 <b>${esc(p.entry_date||"待揭露")}</b></span>
+          <span>個股報酬 <b class="${sgn(p.run_ret)}">${spct(p.run_ret)}</b></span>
+        </div>
+        <div class="cred">
+          <span class="badge">分點歷史 α ${spct(c.mean_alpha)}</span>
+          <span class="badge">OOS α ${spct(c.oos_mean_alpha)}</span>
+          ${c.fdr_pass?`<span class="badge ok">FDR 顯著</span>`:``}
+          ${c.oos_pass?`<span class="badge">OOS 通過</span>`:``}
+          <span class="badge a">${esc(c.label||"—")}</span>
+        </div>
+      </article>`;
+    }).join("");
+}
+
+/* 值得追蹤分點卡 */
+function ciBar(r){
+  if(!isNum(r.alpha_ci_lo)||!isNum(r.alpha_ci_hi))return `<div class="ci-cap"><span>α 區間 —</span></div>`;
+  const lo=clampL(r.alpha_ci_lo),hi=clampL(r.alpha_ci_hi),zero=clampL(0),pt=clampL(r.mean_alpha),c=sgn(r.mean_alpha);
+  return `<div class="ci"><div class="ci-track">
+      <div class="ci-fill ${c}" style="left:${lo}%;width:${Math.max(hi-lo,1)}%"></div>
+      <div class="ci-zero" style="left:${zero}%"></div><div class="ci-pt ${c}" style="left:${pt}%"></div>
+    </div><div class="ci-cap"><span>α 95% 區間 ${spct(r.alpha_ci_lo)}</span><span>0</span><span>${spct(r.alpha_ci_hi)}</span></div></div>`;
+}
+function card(r){
+  const hedge=r.label==="隔沖",c=sgn(r.mean_alpha);
+  return `<article class="card"><div class="card-top">
+      <span class="bname">${esc(r.broker_name||r.broker_id)}</span><span class="bid">${esc(r.broker_id)}</span>
+      <span class="chip${hedge?" hedge":""}">${esc(r.label||"—")}</span>
+      ${r.oos_pass&&r.fdr_pass?`<span class="chip watch">值得追蹤</span>`:``}</div>
+    <div class="hero"><div class="big ${c}">${spct(r.mean_alpha)}</div>
+      <div class="lbl">平均超額報酬 α<br>持有 ${H} 日 · 扣成本</div></div>
+    ${ciBar(r)}
+    <div class="mgrid">
+      <div class="m"><div class="mk">事件數</div><div class="mv">${r.n_events??"—"}</div></div>
+      <div class="m"><div class="mk">超額勝率</div><div class="mv">${pct(r.win_excess,0)}</div></div>
+      <div class="m"><div class="mk">OOS 勝率</div><div class="mv">${pct(r.oos_win_excess,0)}</div></div>
+      <div class="m"><div class="mk">p(α)</div><div class="mv sm">${fp(r.p_alpha)}</div></div>
+      <div class="m"><div class="mk">IS α</div><div class="mv sm ${sgn(r.is_mean_alpha)}">${spct(r.is_mean_alpha)}</div></div>
+      <div class="m"><div class="mk">OOS α</div><div class="mv sm ${sgn(r.oos_mean_alpha)}">${spct(r.oos_mean_alpha)}</div></div>
+      <div class="m"><div class="mk">倒貨率</div><div class="mv sm">${pct(r.dump_ratio,0)}</div></div>
+      <div class="m"><div class="mk">FDR</div><div class="mv"><span class="flag ${r.fdr_pass?"on":"off"}">${r.fdr_pass?"通過":"—"}</span></div></div>
+    </div></article>`;
+}
+function renderWatch(){
+  const w=blk().watchlist||[];
+  document.getElementById("p-watch").innerHTML=w.length?w.map(card).join("")
+    :`<div class="empty"><b>本期無分點同時通過 佈局 × OOS × FDR（H=${H} 日）。</b><br>
+       這在波段尺度是正常結果，而非資料有誤。可切換持有天數，或到「全部分點」看誰接近門檻。</div>`;
+}
+
+/* 全部分點表 */
+let sortKey="mean_alpha",sortDir=-1;
+const COLS=[["broker","分點",false],["n_events","N",true],["win_excess","超額勝率",true],
+  ["mean_alpha","平均α",true],["p_alpha","p(α)",true],["oos_win_excess","OOS勝率",true],
+  ["oos_pass","OOS",false],["fdr_pass","FDR",false]];
+function renderAll(){
+  const ALL=blk().all_ranked||[];
+  const rows=[...ALL].sort((a,b)=>{
+    let x=a[sortKey],y=b[sortKey];
+    if(sortKey==="broker"){x=a.broker_name||a.broker_id;y=b.broker_name||b.broker_id;return sortDir*String(x).localeCompare(String(y));}
+    x=isNum(x)?x:-Infinity;y=isNum(y)?y:-Infinity;return sortDir*(x-y);});
+  const head=COLS.map(([k,lbl])=>{const on=k===sortKey;const ar=on?(sortDir<0?"▼":"▲"):"";
+    return `<th data-k="${k}" ${on?`aria-sort="${sortDir<0?"descending":"ascending"}"`:""}>${lbl}<span class="ar">${ar}</span></th>`;}).join("");
+  const body=rows.map(r=>`<tr>
+    <td><span class="t-name">${esc(r.broker_name||r.broker_id)}</span><span class="t-id">${esc(r.broker_id)}</span></td>
+    <td>${r.n_events??"—"}</td><td>${pct(r.win_excess,0)}</td>
+    <td class="${sgn(r.mean_alpha)}">${spct(r.mean_alpha)}</td><td>${fp(r.p_alpha)}</td>
+    <td>${pct(r.oos_win_excess,0)}</td>
+    <td><span class="yn ${r.oos_pass?"y":"n"}">${r.oos_pass?"✓":"·"}</span></td>
+    <td><span class="yn ${r.fdr_pass?"y":"n"}">${r.fdr_pass?"✓":"·"}</span></td></tr>`).join("");
+  document.getElementById("p-all").innerHTML=ALL.length
+    ?`<p class="sub" style="margin:0 0 10px">共 ${rows.length} 檔受測（H=${H} 日）。多檔 OOS ✓ 但 FDR ·（靠運氣過 OOS），只有兩者皆 ✓ 才進「值得追蹤」。</p>
+      <div class="twrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`
+    :`<div class="empty"><b>H=${H} 日無分點達最少事件數門檻。</b></div>`;
+  document.querySelectorAll("#p-all th[data-k]").forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k;if(k===sortKey)sortDir*=-1;else{sortKey=k;sortDir=(k==="broker")?1:-1;}renderAll();});
+}
+
+function renderMeta(){
+  const p=RAW.params;
+  if(p)document.getElementById("params").innerHTML=
+    `<div class="sub">參數：事件門檻 ${(p.event_min_value/1e4).toLocaleString()} 萬 · 進場延遲 ${p.entry_lag} 日 · 成本 ${(p.cost_roundtrip*100).toFixed(2)}% · 基準 ${p.benchmark_id} · IS 比例 ${p.is_fraction} · FDR α ${p.fdr_alpha} · 近期窗 ${p.live_window} 日</div>`;
+  const rg=RAW.trading_days_range;
+  document.getElementById("gen").textContent=(RAW._demo?"示範資料 · ":"")+
+    (RAW.generated_at?"更新 "+RAW.generated_at.slice(0,16).replace("T"," "):"")+
+    (rg&&rg.length?" · 窗 "+rg[0]+"~"+rg[1]:"");
+}
+
+function render(){ renderDiag(blk().diagnostics||{}); renderLive(); renderWatch(); renderAll(); renderMeta(); }
+
+/* horizon 切換 */
+document.querySelectorAll("#hz button").forEach(btn=>btn.onclick=()=>{
+  H=btn.dataset.h;
+  document.querySelectorAll("#hz button").forEach(b=>b.setAttribute("aria-pressed",b===btn));
+  render();
+});
+/* 分頁切換 */
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-selected",x===t));
+  ["live","watch","all","method"].forEach(id=>document.getElementById("p-"+id).hidden=(id!==t.dataset.tab));
+});
+/* 漲跌色切換 */
+document.getElementById("ud").onclick=()=>{
+  const cur=document.documentElement.getAttribute("data-updown"),nx=cur==="tw"?"us":"tw";
+  document.documentElement.setAttribute("data-updown",nx);
+  document.getElementById("udlab").textContent=nx==="tw"?"台":"美";
 };
 
-const $=(s,r=document)=>r.querySelector(s);
-const fmt=(n,d=0)=>n==null?"—":Number(n).toLocaleString("zh-TW",{minimumFractionDigits:d,maximumFractionDigits:d});
-const cls=v=>v>0?"up":v<0?"down":"mut";
-const sign=v=>(v>0?"+":"")+v;
-const lots=sh=>fmt(Math.round((sh||0)/1000));   // 股→張
-const oku=n=>fmt((n||0)/1e8,2);                  // 元→億
-
-async function load(name){
-  try{const r=await fetch(`data/${name}.json`,{cache:"no-store"});if(r.ok)return await r.json();}catch(e){}
-  return null;
-}
-
-function renderMarket(m){
-  const mk=m?.market_twse_fmtqik;
-  $("#market-date").textContent=m?("截至 "+(m.as_of||"")):"";
-  const tiles=$("#market-tiles");
-  if(mk){
-    const chg=parseFloat(String(mk.Change).replace(/[+,]/g,""))||0;
-    tiles.innerHTML=`
-      <div class="tile"><div class="k">加權指數 TAIEX</div><div class="v">${fmt(parseFloat(mk.TAIEX),2)}</div></div>
-      <div class="tile"><div class="k">漲跌</div><div class="v ${cls(chg)}">${sign(fmt(chg,2))}</div></div>
-      <div class="tile"><div class="k">成交金額</div><div class="v">${oku(parseFloat(mk.TradeValue))} 億</div></div>`;
-  }else tiles.innerHTML=`<div class="empty">大盤資料待更新</div>`;
-  const tb=$("#watch tbody");tb.innerHTML="";
-  (m?.quotes||[]).forEach(q=>{
-    // FinMind spread 為「漲跌點數（元）」非百分比；漲跌幅% = spread / 前日收盤(=close-spread)
-    const prev=(q.close!=null&&q.spread!=null)?q.close-q.spread:null;
-    const pct=prev?q.spread/prev*100:null;
-    tb.insertAdjacentHTML("beforeend",`<tr>
-      <td>${q.stock_id}</td><td>${fmt(q.close,2)}</td>
-      <td class="${cls(q.spread)}">${pct==null?"—":sign(fmt(pct,2))+"%"}</td>
-      <td class="mut">${fmt(q.open,2)}</td><td class="mut">${fmt(q.max,2)}</td><td class="mut">${fmt(q.min,2)}</td>
-      <td>${lots(q.trading_volume)}</td></tr>`);
-  });
-  if(!(m?.quotes||[]).length) $("#watch tbody").innerHTML=`<tr><td colspan="7" class="empty">追蹤清單待更新</td></tr>`;
-}
-
-function renderRank(r){
-  const p=r?.params;
-  $("#rank-params").textContent=p?`近${p.lookback_days}日·淨買超≥${fmt(p.event_min_amount/1e4)}萬·持有${p.hold_days}日·事件≥${p.min_events}`:"";
-  const tb=$("#rank tbody");tb.innerHTML="";
-  const rows=r?.ranking||[];
-  rows.forEach((x,i)=>{
-    const wr=(x.win_rate*100);
-    const c=wr>=55?"up":wr<50?"down":"";
-    tb.insertAdjacentHTML("beforeend",`<tr>
-      <td>${x.securities_trader_id} <span class="mut">${x.securities_trader||""}</span></td>
-      <td class="${c}" style="font-weight:650">${fmt(wr,1)}%</td>
-      <td><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
-        <div class="bar"><i style="width:${Math.max(0,Math.min(100,x.wilson_lb*100))}%"></i></div>${fmt(x.wilson_lb*100,1)}</div></td>
-      <td class="mut">${fmt(x.wins)}/${fmt(x.evaluable)}</td>
-      <td class="mut">${fmt(x.events)}</td></tr>`);
-  });
-  const note=$("#rank-note");
-  if(!rows.length){ $("#rank tbody").innerHTML=""; note.style.display="block"; note.textContent="尚無達門檻分點（需回補多個分點；目前為單一分點示範）。"; }
-  else if((r.branches_considered||0)<=1){ note.style.display="block"; note.textContent=`目前僅回補 ${r.branches_considered} 個分點。擴大分點宇宙後即為完整排行。`; }
-}
-
-function renderBlock(b){
-  const rows=b?.block_trades||[];
-  $("#block-date").textContent=rows.length?`${rows[rows.length-1].date}~${rows[0].date}`:"";
-  const tb=$("#block tbody");tb.innerHTML="";
-  rows.forEach(x=>{
-    const pd=x.premium_discount;
-    tb.insertAdjacentHTML("beforeend",`<tr>
-      <td>${x.date.slice(5)}</td><td>${x.stock_id}</td><td class="mut">${x.trade_type||""}</td>
-      <td>${fmt(x.price,2)}</td><td class="mut">${x.close==null?"—":fmt(x.close,2)}</td>
-      <td class="${cls(pd)}">${pd==null?"—":sign(fmt(pd*100,2))+"%"}</td>
-      <td>${oku(x.trading_money)}億</td></tr>`);
-  });
-  if(!rows.length){ $("#block-note").style.display="block"; $("#block-note").textContent="近日無鉅額交易或資料待更新。"; }
-}
-
-function renderTop(s){
-  $("#top-range").textContent=s?.trading_days_range?s.trading_days_range.join("~"):"";
-  const tb=$("#top tbody");tb.innerHTML="";
-  (s?.top_net_buy||[]).slice(0,20).forEach(x=>{
-    tb.insertAdjacentHTML("beforeend",`<tr>
-      <td>${x.date.slice(5)}</td>
-      <td>${x.securities_trader_id} <span class="mut">${x.securities_trader||""}</span></td>
-      <td>${x.stock_id}</td>
-      <td class="up" style="font-weight:600">${oku(x.net_amount)}</td>
-      <td class="mut">${lots(x.buy_shares)}</td><td class="mut">${lots(x.sell_shares)}</td></tr>`);
-  });
-  if(!(s?.top_net_buy||[]).length) $("#top tbody").innerHTML=`<tr><td colspan="6" class="empty">資料待更新</td></tr>`;
-}
-
-(async ()=>{
-  let [ranking,status,block,market]=await Promise.all([load("ranking"),load("status"),load("block_trade"),load("market")]);
-  let fell=false;
-  if(!ranking){ranking=FALLBACK.ranking;fell=true;}
-  if(!status){status=FALLBACK.status;fell=true;}
-  if(!block){block=FALLBACK.block;fell=true;}
-  if(!market){market=FALLBACK.market;fell=true;}
-  if(fell) $("#fallbackBanner").style.display="block";
-  const gen=(status?.generated_at||ranking?.generated_at||"").slice(0,16).replace("T"," ");
-  $("#asof").textContent = (fell?"示意資料":"更新於 "+(gen||"—"))+" · 涵蓋 "+(status?.trading_days_range?.join("~")||"—");
-  renderMarket(market); renderRank(ranking); renderBlock(block); renderTop(status);
+/* 載入：優先讀 collector 產出，失敗回退示範 */
+(async()=>{
+  try{
+    const r=await fetch("data/branch_edge.json",{cache:"no-store"});
+    if(!r.ok)throw 0;
+    RAW=await r.json(); RAW._demo=false;
+  }catch(e){ RAW=DEMO; }
+  render();
 })();
 </script>
+</body>
+</html>
