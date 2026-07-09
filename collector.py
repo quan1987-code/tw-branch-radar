@@ -119,6 +119,9 @@ def init_db(conn: sqlite3.Connection) -> None:
             sell_shares          INTEGER,  -- Σ sell（股）
             PRIMARY KEY (date, securities_trader_id, stock_id)
         );
+        -- Phase 8 α-edge：分點×股×日 索引，供倒貨偵測的針對性前向 join（免把全表載進記憶體）
+        CREATE INDEX IF NOT EXISTS idx_bd_trader
+            ON branch_daily(securities_trader_id, stock_id, date);
         -- 增量涵蓋標記：某分點某「平日」已查過（含非交易日，避免下次重查）
         CREATE TABLE IF NOT EXISTS fetched_keys(
             securities_trader_id TEXT,
@@ -706,6 +709,15 @@ def main() -> None:
             budget_left = max(0, MAX_REQ_PER_RUN - progress["fetched_this_run"])
             ensure_prices(dl, conn, stocks, trading_days[0], trading_days[-1], budget_left)
             export_ranking(compute_ranking(conn, trading_days, events), api_info)
+
+            # Phase 8：α-edge（超額報酬 α + 走查 IS/OOS + BH-FDR + 可操作標的 live_picks）。
+            # 重用既有 branch_daily+stock_price，僅需補抓基準 0050 收盤（α 的大盤代理）。
+            # 延遲 import：branch_edge 需 numpy/pandas，與 finmind 同屬選用相依。
+            import branch_edge
+            ensure_prices(dl, conn, [branch_edge.EdgeConfig.benchmark_id],
+                          trading_days[0], trading_days[-1], 5)
+            branch_edge.run_from_db(conn, trading_days,
+                                    path=os.path.join(DATA_DIR, "branch_edge.json"))
 
             block_days = trading_days[-BLOCK_DAYS:]
             block_rows = fetch_block_trades(dl, block_days[0], block_days[-1], watchlist)
