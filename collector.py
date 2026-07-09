@@ -153,6 +153,11 @@ def init_db(conn: sqlite3.Connection) -> None:
             trading_money INTEGER
         );
         CREATE INDEX IF NOT EXISTS idx_block_date ON block_trade(date);
+        -- 股票代碼↔名稱對照（Phase 8；來源 TaiwanStockInfo，全市場一次查、股名近乎不變不必每日重抓）
+        CREATE TABLE IF NOT EXISTS stock_info(
+            stock_id   TEXT PRIMARY KEY,
+            stock_name TEXT
+        );
         """
     )
     conn.commit()
@@ -475,6 +480,30 @@ def ensure_prices(dl: DataLoader, conn: sqlite3.Connection,
     return {"fetched": fetched, "covered": covered, "target": len(stocks), "stopped_early": stopped}
 
 
+def ensure_stock_names(dl: DataLoader, conn: sqlite3.Connection) -> int:
+    """補齊股票代碼↔名稱對照（TaiwanStockInfo，全市場一次查）。已有資料即略過
+    （股名近乎不變，不必每日重抓；換股名的極端情況下次 cache 過期重建會自動更新）。
+    回傳寫入列數（0 代表已有資料、本次略過）。"""
+    (n,) = conn.execute("SELECT COUNT(*) FROM stock_info").fetchone()
+    if n > 0:
+        return 0
+    try:
+        df = dl.taiwan_stock_info(timeout=REQ_TIMEOUT)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[stock_info] 查詢失敗（略過本次，下輪再試）：{exc}")
+        return 0
+    if df is None or not len(df) or "stock_id" not in df.columns or "stock_name" not in df.columns:
+        print(f"[stock_info] 回傳異常，略過：欄位={sorted(df.columns) if df is not None else None}")
+        return 0
+    # 同代碼可能多列（如上市/上櫃切換歷史）；取最後一筆代表目前名稱
+    rows = list(df[["stock_id", "stock_name"]].drop_duplicates("stock_id", keep="last")
+               .itertuples(index=False, name=None))
+    with conn:
+        conn.executemany("INSERT OR REPLACE INTO stock_info(stock_id, stock_name) VALUES (?, ?)", rows)
+    print(f"[stock_info] 寫入 {len(rows)} 檔股票代碼↔名稱對照（TaiwanStockInfo）")
+    return len(rows)
+
+
 def compute_ranking(conn: sqlite3.Connection, trading_days: list[str],
                     events: list[dict]) -> dict:
     """以事件＋+HOLD_DAYS 交易日 close 判勝負，彙總各分點勝率並以 Wilson 下界排序。"""
@@ -719,6 +748,8 @@ def main() -> None:
             print(f"[events] 事件數={len(events)}，涉及 {len(stocks)} 檔個股"
                   f"（門檻淨買超 ≥ {EVENT_MIN_AMOUNT:,}）")
             budget_left = max(0, MAX_REQ_PER_RUN - progress["fetched_this_run"])
+            # 股票代碼↔名稱對照（1 次查全市場，已有資料即略過）；面板顯示用，非 α 計算命脈
+            ensure_stock_names(dl, conn)
             # 基準 0050 先補（α 命脈；1 檔、通常已 cache），再補事件個股。
             # 額度不足時 ensure_prices 會優雅停、下輪續補（不崩整個 pipeline）。
             ensure_prices(dl, conn, [branch_edge.EdgeConfig.benchmark_id],

@@ -203,7 +203,7 @@ const DEMO = {"_demo":true,"generated_at":"2025-01-01T00:00:00","benchmark_ready
         "label":"佈局","dump_ratio":0.02},
       {"broker_id":"N7","broker_name":"雜訊分點(示範)","n_events":33,"win_excess":0.61,"mean_alpha":0.018,
         "p_alpha":0.041,"oos_win_excess":0.6,"oos_pass":true,"fdr_pass":false,"label":"佈局","dump_ratio":0.1}],
-    "live_picks":[{"broker_id":"SKILL","broker_name":"示範高手分點","stock_id":"2330","event_date":"2025-06-26",
+    "live_picks":[{"broker_id":"SKILL","broker_name":"示範高手分點","stock_id":"2330","stock_name":"台積電","event_date":"2025-06-26",
         "entry_date":"2025-06-27","net_value":88000000,"days_since":2,"horizon":5,"run_ret":0.021,"run_alpha":0.014}]},
   "10":{"horizon":10,"diagnostics":{"n_branches_tested":842,"n_fdr_pass":0,"n_oos_pass":4,
         "fdr_crit_p":0.0,"is_oos_rank_spearman":-0.01,"is_cut_date":"2025-04-15",
@@ -257,6 +257,7 @@ function renderLive(){
       return `<article class="pick">
         <div class="pick-top">
           <span class="sid">${esc(p.stock_id)}</span>
+          ${p.stock_name?`<span class="bid">${esc(p.stock_name)}</span>`:``}
           <span class="via">by <b>${esc(p.broker_name||p.broker_id)}</b> <span class="bid">${esc(p.broker_id)}</span></span>
           <span class="run ${rc}">${spct(p.run_alpha)}<span class="rl">進場後 α（${p.days_since} 日）</span></span>
         </div>

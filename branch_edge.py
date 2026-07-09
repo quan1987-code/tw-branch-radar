@@ -145,6 +145,14 @@ def load_price_panel(conn: sqlite3.Connection) -> dict[str, dict[str, float]]:
     return panel
 
 
+def load_stock_names(conn: sqlite3.Connection) -> dict[str, str]:
+    """{stock_id: stock_name}；表可能不存在（舊 cache 未升級）或空，回空字典即可（面板降級為只顯代碼）。"""
+    try:
+        return dict(conn.execute("SELECT stock_id, stock_name FROM stock_info").fetchall())
+    except sqlite3.OperationalError:
+        return {}
+
+
 def load_events(conn: sqlite3.Connection, trading_days: list[str],
                 cfg: EdgeConfig) -> pd.DataFrame:
     """大額買超事件（淨額 ≥ 門檻），附交易日位置 pos。SQL 過濾後才進 pandas。"""
@@ -318,13 +326,14 @@ def evaluate(alpha_df: pd.DataFrame, cfg: EdgeConfig):
 # ==================================================================
 def build_live_picks(events: pd.DataFrame, price: dict, bench: dict,
                      trading_days: list[str], gate_ids: set, horizon: int,
-                     cfg: EdgeConfig) -> list[dict]:
+                     cfg: EdgeConfig, names: dict = None) -> list[dict]:
     """
     嚴格門檻分點（佈局∩OOS∩FDR）最近 live_window 個交易日的大額買進、且尚未倒貨者，
     附進場後至今的走勢（run α，可能未滿 horizon）→ 每日鎖定去研判該股。
     """
     if events.empty or not gate_ids:
         return []
+    names = names or {}
     n = len(trading_days)
     last_close_date = trading_days[-1]
     cutoff_pos = n - cfg.live_window
@@ -346,6 +355,7 @@ def build_live_picks(events: pd.DataFrame, price: dict, bench: dict,
                 run_alpha = run_ret - (b1 / b0 - 1.0)
         picks.append(dict(
             broker_id=r.broker_id, broker_name=r.broker_name, stock_id=r.stock_id,
+            stock_name=names.get(r.stock_id),
             event_date=r.date, entry_date=entry_date, net_value=float(r.net_value),
             days_since=int(days_since), horizon=horizon,
             run_ret=(None if run_ret is None else round(run_ret, 4)),
@@ -363,7 +373,8 @@ def _round_records(df: pd.DataFrame, cols4: list[str]) -> list[dict]:
 
 
 def run_horizon(events: pd.DataFrame, cls: pd.DataFrame, price: dict, bench: dict,
-                trading_days: list[str], horizon: int, cfg: EdgeConfig) -> dict:
+                trading_days: list[str], horizon: int, cfg: EdgeConfig,
+                names: dict = None) -> dict:
     alpha_df = compute_alpha(events, price, bench, trading_days, horizon, cfg)
     rk, diag = evaluate(alpha_df, cfg)
     if not rk.empty:
@@ -372,7 +383,7 @@ def run_horizon(events: pd.DataFrame, cls: pd.DataFrame, price: dict, bench: dic
     else:
         gate = rk
     gate_ids = set(gate["broker_id"]) if not gate.empty else set()
-    live = build_live_picks(events, price, bench, trading_days, gate_ids, horizon, cfg)
+    live = build_live_picks(events, price, bench, trading_days, gate_ids, horizon, cfg, names)
     money4 = ["win_excess", "mean_alpha", "alpha_ci_lo", "alpha_ci_hi", "p_alpha",
               "p_binom", "is_mean_alpha", "oos_win_excess", "oos_mean_alpha", "dump_ratio"]
     return {
@@ -395,9 +406,10 @@ def run_from_db(conn: sqlite3.Connection, trading_days: list[str],
     cls = classify_branches(events, cfg)
     price = load_price_panel(conn)
     bench = price.get(cfg.benchmark_id, {})
+    names = load_stock_names(conn)
     by_h = {}
     for h in cfg.horizons:
-        by_h[str(h)] = run_horizon(events, cls, price, bench, trading_days, h, cfg)
+        by_h[str(h)] = run_horizon(events, cls, price, bench, trading_days, h, cfg, names)
     doc = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": "FinMind",
@@ -450,6 +462,7 @@ CREATE TABLE IF NOT EXISTS branch_daily(
 CREATE INDEX IF NOT EXISTS idx_bd_trader ON branch_daily(securities_trader_id, stock_id, date);
 CREATE TABLE IF NOT EXISTS stock_price(
   date TEXT, stock_id TEXT, close REAL, PRIMARY KEY (date, stock_id));
+CREATE TABLE IF NOT EXISTS stock_info(stock_id TEXT PRIMARY KEY, stock_name TEXT);
 """
 
 
@@ -514,6 +527,7 @@ def selftest() -> bool:
         "INSERT OR REPLACE INTO branch_daily(date,stock_id,securities_trader_id,"
         "securities_trader,buy_value,sell_value,buy_shares,sell_shares) VALUES (?,?,?,?,?,?,?,?)",
         bd)
+    conn.execute("INSERT OR REPLACE INTO stock_info(stock_id, stock_name) VALUES ('S00', '測試電子')")
     conn.commit()
     cfg = EdgeConfig(horizons=(5, 10), min_events_total=15, min_events_is=8,
                      min_events_oos=4, benchmark_id="0050")
@@ -558,10 +572,14 @@ def selftest() -> bool:
     print("\n===== 可操作層 live_picks =====")
     gate_ids = {"SKILL"}  # 直接驗證函式（不受 FDR 空窗影響）
     late = events.copy()
+    names = load_stock_names(conn)
     live = build_live_picks(late, load_price_panel(conn),
-                            load_price_panel(conn).get("0050", {}), days, gate_ids, 10, cfg)
+                            load_price_panel(conn).get("0050", {}), days, gate_ids, 10, cfg, names)
     print(f"  SKILL 近 {cfg.live_window} 日 live_picks 數：{len(live)}")
     check(isinstance(live, list), "live_picks 回傳 list")
+    s00_picks = [p for p in live if p["stock_id"] == "S00"]
+    check(not s00_picks or s00_picks[0]["stock_name"] == "測試電子",
+         "live_picks 附上正確 stock_name（S00→測試電子）")
 
     print("\n" + ("★ 全部通過 ★" if ok else "✗ 有失敗項 ✗"))
     conn.close()
