@@ -155,6 +155,13 @@
 - [x] Phase 5 功能 C 成交資訊 ✅（run #10：追蹤 7 檔價量＋TWSE 大盤，market.json）
 - [x] Phase 6 功能 D HTML 面板 ✅（index.html 單檔讀 4 JSON、手機優先、台股紅漲綠跌、缺檔降級＋內嵌示意；Playwright 實測渲染五區塊正常。真實資料待 Phase 7 commit 產物＋Pages）
 - [x] Phase 7 Actions 排程 + 部署 ✅（cron **每 30 分全天候**＋commit data/*.json，gate 於 `.cache/remaining.txt==0`：回補中純回補不 commit、填滿後每輪彙總；run #11 驗證 bot commit「chore(data)」機制、`7744bab` 為實際完成提交。程式於 main 生效；公開 Pages(main) 已由使用者啟用、建置上線；全市場資料已於 2026-07-08 自動 commit＋重部署）
+- [~] Phase 8 α-edge 整合（可操作分點×標的篩選）——修正勝率版三方法論致命傷，落地為每日可操作篩選
+  - **緣起**：使用者（籌碼/量化交易者）提供 `branch_edge.py`＋`branch_edge.html`，指出「勝率排行」離實戰太遠。三修正：(1) 多頭偏誤→改用**超額報酬 α**（個股−大盤同窗），勝以 α>0 計；(2) 多重比較/倖存者偏誤→**走查**（IS 選 / OOS 驗）＋**BH-FDR** 校正＋IS↔OOS 名次相關；(3) 訊號不可交易→分點 T+1 揭露故**進場延遲 1 日＋扣來回成本 0.6%**。
+  - **定案參數（經使用者確認）**：horizon **5 與 10 日兩種、分開顯示**；每日推薦清單 **嚴格門檻 only** ＝ 佈局 ∩ OOS 通過 ∩ FDR 顯著（空清單即空、誠實至上；診斷帶恆顯示、另留「全部分點」表看接近門檻者）；entry_lag=1；cost_roundtrip=0.6%；基準=0050；min_events 全期 20/IS 12/OOS 6；is_fraction=0.67；fdr_alpha=0.10；二項檢定純 numpy/math（免 scipy）。
+  - **架構（重用既有資料、不另起爐灶）**：既有 SQLite 已含 α 所需兩表——`branch_daily`（net=buy_value−sell_value、net_shares=buy_shares−sell_shares）＋`stock_price`（個股收盤，原勝率+5日比對用）。新增 repo `branch_edge.py` 讀此二表（＋補抓基準 0050）跑完整方法論；`collector.py` 回補完成後呼叫、產出 `data/branch_edge.json`（by_horizon 5/10）。
+  - **可操作層（兩上傳檔都沒有、使用者真正要的）**：把嚴格門檻分點 × 其**近期大額買進** join → 個股層級觀察清單 `live_picks`（某高 edge 分點最近幾日買了哪些股、進場後至今報酬/α、是否已倒貨）→ 落地成「鎖定幾檔研判該股值不值得投」。
+  - **面板**：`git mv index.html→overview.html` 保留舊總覽；新 `index.html`＝edge 面板（預設「近期進場標的」分頁＋horizon 5/10 切換＋診斷帶＋全部分點表＋方法警語），接真實 `branch_edge.json`。
+  - 步驟：8.1 PLAN ✅／8.2 引擎／8.3 接線＋基準／8.4 離線測試／8.5 面板／8.6 部署＋實跑＋合併 main。
 
 ---
 
