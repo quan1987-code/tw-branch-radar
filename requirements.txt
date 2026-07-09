@@ -3,3 +3,6 @@
 # 會一併帶入 pandas<2.0.0、requests、pyarrow（整日物件為 parquet，需 pyarrow）
 # 注意：pandas<2 於 Python 3.11 有 manylinux wheel，免原始碼編譯（見 workflow 固定 3.11）
 finmind==1.9.12
+# Phase 8 α-edge 引擎（branch_edge.py）直接使用 numpy；pandas<2 已由 finmind 帶入。
+# 上限 <2：numpy 2.0 與 pandas 1.5.x（本專案 pandas<2）不相容，明確釘住避免 Actions 裝到 2.x。
+numpy<2
