@@ -33,6 +33,7 @@ import json
 import math
 import os
 import sqlite3
+import zlib
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
@@ -45,7 +46,8 @@ import pandas as pd
 # ==================================================================
 @dataclass
 class EdgeConfig:
-    horizons: tuple = (5, 10)            # 持有交易日數；兩種分開顯示（使用者確認）
+    horizons: tuple = (5, 10, 20)        # 持有交易日數；分開顯示（20 日在 120 窗下 OOS 較薄）
+    gate_labels: tuple = ("佈局", "中性")  # 值得追蹤允許的分類（排除隔沖）；option 2：含中性
     event_min_value: float = 5_000_000   # 單日單股淨買超金額門檻（NT$）
     entry_lag: int = 1                   # 進場延遲（分點 T+1 揭露 → ≥1）
     cost_roundtrip: float = 0.006        # 來回成本 ≈ 手續費0.1425%×2 + 證交稅0.3%
@@ -265,7 +267,7 @@ def evaluate(alpha_df: pd.DataFrame, cfg: EdgeConfig):
         if n < cfg.min_events_total:
             continue
         a = g["alpha"].to_numpy()
-        seed = (abs(hash(bid)) % (2 ** 32))
+        seed = zlib.crc32(str(bid).encode())   # 確定性種子（勿用 hash()：process 間隨機、不可重現）
         lo, hi, p_alpha = alpha_ci_p(a, cfg, seed)
         wins = int(g["win_excess"].sum())
         gi = is_df[is_df["broker_id"] == bid]
@@ -366,7 +368,7 @@ def run_horizon(events: pd.DataFrame, cls: pd.DataFrame, price: dict, bench: dic
     rk, diag = evaluate(alpha_df, cfg)
     if not rk.empty:
         rk = rk.merge(cls[["broker_id", "label", "dump_ratio"]], on="broker_id", how="left")
-        gate = rk[(rk["label"] == "佈局") & rk["oos_pass"] & rk["fdr_pass"]]
+        gate = rk[rk["label"].isin(cfg.gate_labels) & rk["oos_pass"] & rk["fdr_pass"]]
     else:
         gate = rk
     gate_ids = set(gate["broker_id"]) if not gate.empty else set()

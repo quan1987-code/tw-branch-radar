@@ -134,6 +134,7 @@
       <div class="hz" id="hz" role="group" aria-label="持有天數">
         <button data-h="5"  aria-pressed="true">5 日</button>
         <button data-h="10" aria-pressed="false">10 日</button>
+        <button data-h="20" aria-pressed="false">20 日</button>
       </div>
       <div style="display:flex;gap:6px">
         <a class="lnk" href="overview.html">總覽</a>
@@ -161,11 +162,11 @@
     <ul>
       <li><b>事件</b>：分點單日對單股淨買超金額 ≥ 門檻（預設 500 萬）。</li>
       <li><b>報酬</b>：用<b>超額報酬 α</b>（個股 − 大盤 0050 同窗），已扣來回成本、進場延遲一天（分點 T+1 揭露）。勝以 <b>α&gt;0</b> 計，不用「收盤變高」——後者在多頭時任何隨機買點都 &gt;50%。</li>
-      <li><b>持有天數</b>：<b>5 日與 10 日兩種、分開顯示</b>（右上切換）。</li>
+      <li><b>持有天數</b>：<b>5／10／20 日、分開顯示</b>（右上切換）。20 日在 120 交易日窗下 OOS 樣本較少、檢定力較弱，數字僅供參考。</li>
       <li><b>走查</b>：前段（IS）選候選、後段（OOS）驗證；兩段都通過才算數。</li>
       <li><b>FDR</b>：上千分點同時比較，靠運氣也有人亮眼；以 Benjamini-Hochberg 校正多重比較。</li>
       <li><b>分類</b>：佈局／中性／隔沖，看<b>持有行為</b>（買後是否倒貨）。</li>
-      <li><b>值得追蹤</b> ＝ 佈局 ∩ OOS 通過 ∩ FDR 顯著（嚴格門檻）。</li>
+      <li><b>值得追蹤</b> ＝ <b>非隔沖（佈局或中性）</b> ∩ OOS 通過 ∩ FDR 顯著。只擋掉當沖倒貨型，保留佈局＋中性的真 edge。</li>
       <li><b>近期進場標的</b> ＝ 值得追蹤分點在最近 N 個交易日的大額買進、且尚未倒貨者；附進場後至今的 α（未滿持有窗、僅供觀察）。</li>
     </ul>
     <h3>三個必讀警語</h3>
@@ -209,7 +210,11 @@ const DEMO = {"_demo":true,"generated_at":"2025-01-01T00:00:00","benchmark_ready
         "caveat":"持有窗重疊使 p 值偏樂觀；建議改 block-bootstrap 並以更長歷史複驗"},
     "watchlist":[],"all_ranked":[{"broker_id":"N7","broker_name":"雜訊分點(示範)","n_events":30,
         "win_excess":0.57,"mean_alpha":0.011,"p_alpha":0.09,"oos_win_excess":0.55,"oos_pass":true,
-        "fdr_pass":false,"label":"佈局","dump_ratio":0.1}],"live_picks":[]}}};
+        "fdr_pass":false,"label":"佈局","dump_ratio":0.1}],"live_picks":[]},
+  "20":{"horizon":20,"diagnostics":{"n_branches_tested":840,"n_fdr_pass":0,"n_oos_pass":1,
+        "fdr_crit_p":0,"is_oos_rank_spearman":0.02,"is_cut_date":"2025-04-15",
+        "caveat":"20 日於 120 交易日窗 OOS 樣本少、檢定力弱"},
+    "watchlist":[],"all_ranked":[],"live_picks":[]}}};
 
 const isNum=v=>typeof v==="number"&&!Number.isNaN(v);
 const pct=(v,d=1)=>isNum(v)?(v*100).toFixed(d)+"%":"—";
@@ -243,7 +248,7 @@ function renderLive(){
   if(!live.length){
     el.innerHTML=`<div class="empty">${watch.length
       ? `<b>值得追蹤分點近 ${RAW.params?.live_window??10} 個交易日無新的大額買進。</b><br>切到「值得追蹤分點」看它們的歷史 edge，或切換持有天數。`
-      : `<b>本期無分點同時通過 佈局 × OOS × FDR（H=${H} 日）。</b><br>故無近期進場標的——這在波段尺度是正常結果（分點訊號多為雜訊）。<br>可切換 5/10 日，或到「全部分點」看誰接近門檻。`}</div>`;
+      : `<b>本期無分點同時通過 非隔沖 × OOS × FDR（H=${H} 日）。</b><br>故無近期進場標的——這在波段尺度是正常結果（分點訊號多為雜訊）。<br>可切換 5/10/20 日，或到「全部分點」看誰接近門檻。`}</div>`;
     return;
   }
   el.innerHTML=`<p class="sub" style="margin:0 0 10px">${watch.length} 個嚴格門檻分點在最近 ${RAW.params?.live_window??10} 日的大額買進、尚未倒貨；進場後 α 為進行中，僅供鎖定研判。</p>`+
@@ -304,7 +309,7 @@ function card(r){
 function renderWatch(){
   const w=blk().watchlist||[];
   document.getElementById("p-watch").innerHTML=w.length?w.map(card).join("")
-    :`<div class="empty"><b>本期無分點同時通過 佈局 × OOS × FDR（H=${H} 日）。</b><br>
+    :`<div class="empty"><b>本期無分點同時通過 非隔沖 × OOS × FDR（H=${H} 日）。</b><br>
        這在波段尺度是正常結果，而非資料有誤。可切換持有天數，或到「全部分點」看誰接近門檻。</div>`;
 }
 
