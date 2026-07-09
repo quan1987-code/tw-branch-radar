@@ -164,6 +164,7 @@
   - 步驟：8.1 PLAN ✅／8.2 引擎 ✅（--selftest 綠）／8.3 接線＋基準 ✅／8.4 離線測試 ✅（整合＋Playwright 渲染綠）／8.5 面板 ✅／8.6 部署＋實跑 ✅（合併 main、collector 產出真實 branch_edge.json）。
   - **實跑結論（2026-07-09、120 日窗 2026-01-06~07-08、基準 0050）**：受測 876 分點。**值得追蹤＝0（H5、H10 皆是）**——無分點同時通過 佈局∩OOS∩FDR，`live_picks` 亦為 0。**IS↔OOS 名次相關 ρ≈0**（H5 −0.007、H10 −0.076）＝過去 α 排名幾乎不能預測未來，勝率版藏起的真相。近missed：H10 **2210 群益期貨**（α+5.9%、OOSα+3.5%、OOS✓＋FDR✓，唯因倒貨率 27%＝中性而非佈局落榜）、H10 5962 日茂南投（佈局＋OOS✓ 但 FDR 不顯著）、H5 2200 元大期貨（α+3.9%、OOS✓）。**空清單是方法論正確結果**（使用者選嚴格門檻）；主要檢定力限制＝120 日走查 OOS 窗僅約 1 個月，建議後續把回補拉長到 250+ 日再評估。
   - **8.7 依使用者選擇調參（2026-07-09）**：(option 2) 值得追蹤門檻 佈局→**非隔沖（含中性）**＝`gate_labels=("佈局","中性")`，使 2210 群益期貨（H10 OOS✓FDR✓中性）等浮上 watchlist；(option 3) horizons 加 **20 日**（面板加鈕；120 窗下 H20 OOS 薄、已標註）。**教學結論**：嚴謹旋鈕（fdr_alpha 0.10／min_events 20/12/6／is_fraction 0.67）**維持不動**——放鬆它們＝把雜訊當訊號、退回勝率版；範圍旋鈕（event_min_value 500萬／分類門檻）才是依風格可調處。**另修正可重現性 bug**：bootstrap 種子由 `hash(bid)`（process 間隨機）改 `zlib.crc32`（確定性），確保同資料每次結果一致（整合測試三次一致驗證）。
+  - **8.8 額度優雅降級修正（2026-07-09）**：實跑 #104 崩於既有脆弱點——`fetch_stock_price` 把 FinMind 額度用盡（"Requests reach the upper limit"）轉成 `SystemExit`，整個 collector 崩、branch_edge.json 停在舊版。此為既有問題（回補期用不到補價故未暴露；穩態每輪需補數千檔股價，一遇額度緊即崩），我的 back-to-back dispatch 引爆。修正：(A) `fetch_stock_price` 改 `RuntimeError`；(B) `ensure_prices` 遇額度錯誤優雅停（`stopped_early`、下輪續補）、單股其他錯誤略過續抓，皆不崩；(C) main 完成區塊基準 0050 先補、`branch_edge.run_from_db` 在鉅額/大盤之前產出（確保 edge 產物先寫出）、鉅額/大盤包 try/except（額度不足略過本次）。假 loader 離線驗證 A/B/C 皆優雅。
 
 ---
 

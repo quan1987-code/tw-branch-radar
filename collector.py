@@ -425,7 +425,7 @@ def fetch_stock_price(dl: DataLoader, stock_id: str, start: str, end: str):
         return dl.taiwan_stock_daily(
             stock_id=stock_id, start_date=start, end_date=end, timeout=REQ_TIMEOUT)
     except Exception as exc:  # noqa: BLE001
-        raise SystemExit(f"股價查詢失敗（{stock_id}）：{exc}")
+        raise RuntimeError(f"股價查詢失敗（{stock_id}）：{exc}")  # 由 ensure_prices 捕捉、優雅降級
 
 
 def _price_covered(conn, stock_id, start, end) -> bool:
@@ -444,11 +444,21 @@ def ensure_prices(dl: DataLoader, conn: sqlite3.Connection,
         if fetched >= budget:
             stopped = True
             break
-        df = fetch_stock_price(dl, stock_id, start, end)
+        try:
+            df = fetch_stock_price(dl, stock_id, start, end)
+        except Exception as exc:  # noqa: BLE001
+            # FinMind 額度用盡 → 優雅停止本次補價（下輪續補），不讓整個 pipeline 崩掉
+            if "limit" in str(exc).lower() or "reach" in str(exc).lower():
+                print(f"[prices] FinMind 額度用盡，停止本次補價（已抓 {fetched} 檔）：{exc}")
+                stopped = True
+                break
+            print(f"[prices] 略過 {stock_id}（查詢失敗）：{exc}")
+            continue
         recs = []
         if len(df):
             if "close" not in df.columns:
-                raise SystemExit(f"股價欄位缺 close（{stock_id}）；實際={sorted(df.columns)}")
+                print(f"[prices] 略過 {stock_id}（缺 close 欄）：{sorted(df.columns)}")
+                continue
             for d, c in zip(df["date"].astype(str), df["close"].tolist()):
                 recs.append((str(d)[:10], stock_id, float(c)))
         with conn:
@@ -702,31 +712,35 @@ def main() -> None:
 
         # Phase 3/4/5：僅在分點資料完整回補後才彙總（回補中的 run 為純回補，避免逾時/超額）
         if progress["remaining"] == 0:
+            # Phase 8 引擎（延遲 import：需 numpy/pandas，與 finmind 同屬選用相依）
+            import branch_edge
             events = extract_events(conn, trading_days)
             stocks = sorted({e["stock_id"] for e in events})
             print(f"[events] 事件數={len(events)}，涉及 {len(stocks)} 檔個股"
                   f"（門檻淨買超 ≥ {EVENT_MIN_AMOUNT:,}）")
             budget_left = max(0, MAX_REQ_PER_RUN - progress["fetched_this_run"])
-            ensure_prices(dl, conn, stocks, trading_days[0], trading_days[-1], budget_left)
-            export_ranking(compute_ranking(conn, trading_days, events), api_info)
-
-            # Phase 8：α-edge（超額報酬 α + 走查 IS/OOS + BH-FDR + 可操作標的 live_picks）。
-            # 重用既有 branch_daily+stock_price，僅需補抓基準 0050 收盤（α 的大盤代理）。
-            # 延遲 import：branch_edge 需 numpy/pandas，與 finmind 同屬選用相依。
-            import branch_edge
+            # 基準 0050 先補（α 命脈；1 檔、通常已 cache），再補事件個股。
+            # 額度不足時 ensure_prices 會優雅停、下輪續補（不崩整個 pipeline）。
             ensure_prices(dl, conn, [branch_edge.EdgeConfig.benchmark_id],
                           trading_days[0], trading_days[-1], 5)
+            ensure_prices(dl, conn, stocks, trading_days[0], trading_days[-1], budget_left)
+            export_ranking(compute_ranking(conn, trading_days, events), api_info)
+            # α-edge（超額報酬 α + 走查 + BH-FDR + 可操作 live_picks）；重用 branch_daily+stock_price
             branch_edge.run_from_db(conn, trading_days,
                                     path=os.path.join(DATA_DIR, "branch_edge.json"))
 
-            block_days = trading_days[-BLOCK_DAYS:]
-            block_rows = fetch_block_trades(dl, block_days[0], block_days[-1], watchlist)
-            store_block_trades(conn, block_days, block_rows)
-            block_stocks = sorted({r[1] for r in block_rows})
-            if block_stocks:
-                ensure_prices(dl, conn, block_stocks, block_days[0], block_days[-1], MAX_REQ_PER_RUN)
-            export_block(conn, block_days, api_info)
-            export_market(dl, conn, watchlist, trading_days, api_info)
+            # 鉅額/大盤：FinMind 額度不足時略過本次（勝率/edge 產物已寫出、不受影響）
+            try:
+                block_days = trading_days[-BLOCK_DAYS:]
+                block_rows = fetch_block_trades(dl, block_days[0], block_days[-1], watchlist)
+                store_block_trades(conn, block_days, block_rows)
+                block_stocks = sorted({r[1] for r in block_rows})
+                if block_stocks:
+                    ensure_prices(dl, conn, block_stocks, block_days[0], block_days[-1], MAX_REQ_PER_RUN)
+                export_block(conn, block_days, api_info)
+                export_market(dl, conn, watchlist, trading_days, api_info)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[aggregate] 鉅額/大盤更新遇錯（多為額度不足），略過本次：{exc}")
         else:
             print(f"[aggregate] 回補未完成（剩 {progress['remaining']} 對），本次僅回補、略過彙總")
 
