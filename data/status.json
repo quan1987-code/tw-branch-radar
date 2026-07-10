@@ -1,11 +1,11 @@
 {
   "phase": 2,
   "dataset": "TaiwanStockTradingDailyReport",
-  "generated_at": "2026-07-09T22:50:52.253926+00:00",
+  "generated_at": "2026-07-10T00:12:52.270999+00:00",
   "trading_days_target": 120,
   "trading_days_range": [
-    "2026-01-06",
-    "2026-07-08"
+    "2026-01-07",
+    "2026-07-09"
   ],
   "branch_coverage": {
     "075T": 120,
@@ -1021,8 +1021,8 @@
   },
   "backfill_remaining_pairs": 0,
   "backfill_stopped_early": false,
-  "fetched_this_run": 0,
-  "total_rows": 77838759,
+  "fetched_this_run": 1010,
+  "total_rows": 77847272,
   "net_buy_formula": "Σ(buy×price) − Σ(sell×price)（逐筆精算，新台幣）",
   "query_note": "非彙總報表以 (securities_trader_id, date) 查詢，逐筆精算。",
   "phase3_event_threshold": 5000000,
@@ -1460,17 +1460,6 @@
       "sell_shares": 286802
     },
     {
-      "date": "2026-01-06",
-      "securities_trader_id": "8440",
-      "securities_trader": "摩根大通",
-      "stock_id": "2330",
-      "buy_amount": 15330504470.0,
-      "sell_amount": 7619158435.0,
-      "net_amount": 7711346035.0,
-      "buy_shares": 9085206,
-      "sell_shares": 4561768
-    },
-    {
       "date": "2026-04-15",
       "securities_trader_id": "1470",
       "securities_trader": "台灣摩根",
@@ -1579,6 +1568,17 @@
       "net_amount": 7128999030.0,
       "buy_shares": 3778155,
       "sell_shares": 302807
+    },
+    {
+      "date": "2026-06-25",
+      "securities_trader_id": "1480",
+      "securities_trader": "美商高盛",
+      "stock_id": "2330",
+      "buy_amount": 8834143585.0,
+      "sell_amount": 1713384470.0,
+      "net_amount": 7120759115.0,
+      "buy_shares": 3673576,
+      "sell_shares": 712867
     }
   ],
   "source": "FinMind"
