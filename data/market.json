@@ -1,6 +1,6 @@
 {
   "phase": 5,
-  "generated_at": "2026-07-10T20:54:43.711603+00:00",
+  "generated_at": "2026-07-10T22:06:40.959098+00:00",
   "as_of": "2026-07-09",
   "market_twse_fmtqik": {
     "Date": "1150709",
@@ -23,79 +23,79 @@
     {
       "stock_id": "2330",
       "date": "2026-07-09",
-      "open": 2450.0,
-      "max": 2460.0,
-      "min": 2415.0,
-      "close": 2415.0,
-      "spread": -50.0,
-      "trading_volume": 34681018,
-      "trading_money": 84397735035
+      "open": 2440.0,
+      "max": 2475.0,
+      "min": 2410.0,
+      "close": 2410.0,
+      "spread": 40.0,
+      "trading_volume": 49540227,
+      "trading_money": 120516271220
     },
     {
       "stock_id": "2317",
       "date": "2026-07-09",
-      "open": 238.0,
-      "max": 240.0,
-      "min": 234.5,
-      "close": 237.5,
-      "spread": 0.0,
-      "trading_volume": 40528079,
-      "trading_money": 9629944166
+      "open": 251.5,
+      "max": 255.5,
+      "min": 249.0,
+      "close": 251.0,
+      "spread": 4.5,
+      "trading_volume": 52952173,
+      "trading_money": 13366226688
     },
     {
       "stock_id": "2454",
       "date": "2026-07-09",
-      "open": 3970.0,
-      "max": 4050.0,
-      "min": 3925.0,
-      "close": 3925.0,
-      "spread": -70.0,
-      "trading_volume": 7370647,
-      "trading_money": 29278102309
+      "open": 4145.0,
+      "max": 4300.0,
+      "min": 4060.0,
+      "close": 4245.0,
+      "spread": 335.0,
+      "trading_volume": 16095233,
+      "trading_money": 67966421080
     },
     {
       "stock_id": "2303",
       "date": "2026-07-09",
-      "open": 161.0,
-      "max": 161.0,
-      "min": 154.0,
-      "close": 156.0,
-      "spread": -7.0,
-      "trading_volume": 59926265,
-      "trading_money": 9443928620
+      "open": 169.0,
+      "max": 173.5,
+      "min": 164.5,
+      "close": 164.5,
+      "spread": 0.5,
+      "trading_volume": 300680863,
+      "trading_money": 50716441689
     },
     {
       "stock_id": "2603",
       "date": "2026-07-09",
-      "open": 196.5,
-      "max": 196.5,
-      "min": 193.5,
-      "close": 194.5,
-      "spread": -1.5,
-      "trading_volume": 5366030,
-      "trading_money": 1046571626
+      "open": 186.0,
+      "max": 186.0,
+      "min": 183.0,
+      "close": 184.5,
+      "spread": 0.5,
+      "trading_volume": 14830332,
+      "trading_money": 2738279903
     },
     {
       "stock_id": "3008",
       "date": "2026-07-09",
-      "open": 4025.0,
-      "max": 4140.0,
-      "min": 3950.0,
-      "close": 3950.0,
-      "spread": 0.0,
-      "trading_volume": 1659751,
-      "trading_money": 6678310645
+      "open": 4250.0,
+      "max": 4430.0,
+      "min": 4210.0,
+      "close": 4290.0,
+      "spread": -90.0,
+      "trading_volume": 4145819,
+      "trading_money": 17903833560
     },
     {
       "stock_id": "2891",
       "date": "2026-07-09",
-      "open": 71.7,
-      "max": 71.7,
-      "min": 69.9,
-      "close": 69.9,
-      "spread": -1.4,
-      "trading_volume": 59414195,
-      "trading_money": 4176338648
+      "open": 70.9,
+      "max": 71.5,
+      "min": 69.8,
+      "close": 71.0,
+      "spread": 0.7,
+      "trading_volume": 48564978,
+      "trading_money": 3442990981
     }
   ],
   "source": "FinMind + TWSE"
