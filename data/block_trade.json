@@ -1,155 +1,415 @@
 {
   "phase": 4,
-  "generated_at": "2026-07-17T23:29:19.027577+00:00",
+  "generated_at": "2026-07-18T01:14:25.235419+00:00",
   "days": [
-    "2026-07-10",
     "2026-07-13",
     "2026-07-14",
     "2026-07-15",
-    "2026-07-16"
+    "2026-07-16",
+    "2026-07-17"
   ],
-  "count": 14,
+  "count": 40,
   "premium_note": "折溢價 = (鉅額成交價 − 當日收盤) / 當日收盤（正=溢價）",
   "block_trades": [
     {
-      "date": "2026-07-10",
-      "stock_id": "2317",
+      "date": "2026-07-13",
+      "stock_id": "00785B",
       "trade_type": "配對交易",
-      "price": 94.02,
-      "volume": 2010000,
-      "trading_money": 188980200,
-      "close": null,
-      "premium_discount": null
+      "price": 35.15,
+      "volume": 28000000,
+      "trading_money": 984200000,
+      "close": 35.2,
+      "premium_discount": -0.0014
     },
     {
-      "date": "2026-07-10",
+      "date": "2026-07-13",
       "stock_id": "2330",
       "trade_type": "配對交易",
-      "price": 227.09,
-      "volume": 620000,
-      "trading_money": 140795800,
-      "close": null,
-      "premium_discount": null
+      "price": 2455.21,
+      "volume": 254400,
+      "trading_money": 624605424,
+      "close": 2440.0,
+      "premium_discount": 0.0062
     },
     {
-      "date": "2026-07-10",
-      "stock_id": "2317",
+      "date": "2026-07-13",
+      "stock_id": "2360",
       "trade_type": "配對交易",
-      "price": 94.03,
-      "volume": 1234000,
-      "trading_money": 116033020,
-      "close": null,
-      "premium_discount": null
-    },
-    {
-      "date": "2026-07-10",
-      "stock_id": "2330",
-      "trade_type": "配對交易",
-      "price": 227.07,
-      "volume": 380000,
-      "trading_money": 86286600,
-      "close": null,
-      "premium_discount": null
-    },
-    {
-      "date": "2026-07-10",
-      "stock_id": "2308",
-      "trade_type": "配對交易",
-      "price": 135.9,
-      "volume": 441000,
-      "trading_money": 59931900,
-      "close": null,
-      "premium_discount": null
-    },
-    {
-      "date": "2026-07-10",
-      "stock_id": "2912",
-      "trade_type": "配對交易",
-      "price": 281.71,
-      "volume": 97940,
-      "trading_money": 27590677,
-      "close": null,
-      "premium_discount": null
-    },
-    {
-      "date": "2026-07-10",
-      "stock_id": "2330",
-      "trade_type": "配對交易",
-      "price": 227.08,
-      "volume": 113000,
-      "trading_money": 25660040,
-      "close": null,
-      "premium_discount": null
-    },
-    {
-      "date": "2026-07-10",
-      "stock_id": "2303",
-      "trade_type": "配對交易",
-      "price": 14.6,
-      "volume": 1663000,
-      "trading_money": 24279800,
-      "close": null,
-      "premium_discount": null
-    },
-    {
-      "date": "2026-07-10",
-      "stock_id": "9914",
-      "trade_type": "配對交易",
-      "price": 128.0,
-      "volume": 156000,
-      "trading_money": 19968000,
-      "close": null,
-      "premium_discount": null
-    },
-    {
-      "date": "2026-07-10",
-      "stock_id": "2912",
-      "trade_type": "配對交易",
-      "price": 281.72,
-      "volume": 68060,
-      "trading_money": 19173863,
-      "close": null,
-      "premium_discount": null
-    },
-    {
-      "date": "2026-07-10",
-      "stock_id": "2882",
-      "trade_type": "配對交易",
-      "price": 53.58,
+      "price": 1837.5,
       "volume": 300000,
-      "trading_money": 16074000,
-      "close": null,
-      "premium_discount": null
+      "trading_money": 551250000,
+      "close": 1850.0,
+      "premium_discount": -0.0068
     },
     {
-      "date": "2026-07-10",
+      "date": "2026-07-13",
       "stock_id": "2382",
       "trade_type": "配對交易",
-      "price": 61.06,
-      "volume": 250000,
-      "trading_money": 15265000,
-      "close": null,
-      "premium_discount": null
+      "price": 378.0,
+      "volume": 1400000,
+      "trading_money": 529200000,
+      "close": 378.0,
+      "premium_discount": 0.0
     },
     {
-      "date": "2026-07-10",
-      "stock_id": "1582",
+      "date": "2026-07-13",
+      "stock_id": "2360",
       "trade_type": "配對交易",
-      "price": 64.95,
-      "volume": 235000,
-      "trading_money": 15263250,
-      "close": null,
-      "premium_discount": null
+      "price": 1887.5,
+      "volume": 200000,
+      "trading_money": 377500000,
+      "close": 1850.0,
+      "premium_discount": 0.0203
     },
     {
-      "date": "2026-07-10",
-      "stock_id": "2913",
+      "date": "2026-07-13",
+      "stock_id": "2360",
       "trade_type": "配對交易",
-      "price": 14.9,
-      "volume": 500000,
-      "trading_money": 7450000,
-      "close": null,
-      "premium_discount": null
+      "price": 1877.5,
+      "volume": 200000,
+      "trading_money": 375500000,
+      "close": 1850.0,
+      "premium_discount": 0.0149
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "3481",
+      "trade_type": "配對交易",
+      "price": 61.0,
+      "volume": 6000000,
+      "trading_money": 366000000,
+      "close": 61.0,
+      "premium_discount": 0.0
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2360",
+      "trade_type": "配對交易",
+      "price": 1852.19,
+      "volume": 140940,
+      "trading_money": 261047659,
+      "close": 1850.0,
+      "premium_discount": 0.0012
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2330",
+      "trade_type": "配對交易",
+      "price": 2455.22,
+      "volume": 95600,
+      "trading_money": 234719032,
+      "close": 2440.0,
+      "premium_discount": 0.0062
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2330",
+      "trade_type": "配對交易",
+      "price": 2455.19,
+      "volume": 89400,
+      "trading_money": 219493986,
+      "close": 2440.0,
+      "premium_discount": 0.0062
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2330",
+      "trade_type": "配對交易",
+      "price": 2455.2,
+      "volume": 81600,
+      "trading_money": 200344320,
+      "close": 2440.0,
+      "premium_discount": 0.0062
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2360",
+      "trade_type": "配對交易",
+      "price": 1852.2,
+      "volume": 102060,
+      "trading_money": 189035532,
+      "close": 1850.0,
+      "premium_discount": 0.0012
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "6488",
+      "trade_type": "配對交易",
+      "price": 1485.0,
+      "volume": 118009,
+      "trading_money": 175243365,
+      "close": 1485.0,
+      "premium_discount": 0.0
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2330",
+      "trade_type": "配對交易",
+      "price": 2462.5,
+      "volume": 70000,
+      "trading_money": 172375000,
+      "close": 2440.0,
+      "premium_discount": 0.0092
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2327",
+      "trade_type": "配對交易",
+      "price": 834.94,
+      "volume": 196000,
+      "trading_money": 163648240,
+      "close": 816.0,
+      "premium_discount": 0.0232
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "4728",
+      "trade_type": "配對交易",
+      "price": 339.5,
+      "volume": 280000,
+      "trading_money": 95060000,
+      "close": 381.0,
+      "premium_discount": -0.1089
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2382",
+      "trade_type": "配對交易",
+      "price": 378.13,
+      "volume": 246500,
+      "trading_money": 93209045,
+      "close": 378.0,
+      "premium_discount": 0.0003
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2382",
+      "trade_type": "配對交易",
+      "price": 378.12,
+      "volume": 246500,
+      "trading_money": 93206580,
+      "close": 378.0,
+      "premium_discount": 0.0003
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2382",
+      "trade_type": "配對交易",
+      "price": 378.62,
+      "volume": 218880,
+      "trading_money": 82872346,
+      "close": 378.0,
+      "premium_discount": 0.0016
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "3661",
+      "trade_type": "配對交易",
+      "price": 4135.0,
+      "volume": 16700,
+      "trading_money": 69054500,
+      "close": 4135.0,
+      "premium_discount": 0.0
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2303",
+      "trade_type": "配對交易",
+      "price": 154.65,
+      "volume": 351000,
+      "trading_money": 54282150,
+      "close": 153.5,
+      "premium_discount": 0.0075
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2308",
+      "trade_type": "配對交易",
+      "price": 1929.67,
+      "volume": 25800,
+      "trading_money": 49785486,
+      "close": 1890.0,
+      "premium_discount": 0.021
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2382",
+      "trade_type": "配對交易",
+      "price": 378.73,
+      "volume": 111630,
+      "trading_money": 42277630,
+      "close": 378.0,
+      "premium_discount": 0.0019
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2303",
+      "trade_type": "配對交易",
+      "price": 154.66,
+      "volume": 255000,
+      "trading_money": 39438300,
+      "close": 153.5,
+      "premium_discount": 0.0076
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2330",
+      "trade_type": "配對交易",
+      "price": 2450.51,
+      "volume": 16000,
+      "trading_money": 39208160,
+      "close": 2440.0,
+      "premium_discount": 0.0043
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "3661",
+      "trade_type": "配對交易",
+      "price": 3790.0,
+      "volume": 10000,
+      "trading_money": 37900000,
+      "close": 4135.0,
+      "premium_discount": -0.0834
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2330",
+      "trade_type": "配對交易",
+      "price": 2453.66,
+      "volume": 14000,
+      "trading_money": 34351240,
+      "close": 2440.0,
+      "premium_discount": 0.0056
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2308",
+      "trade_type": "配對交易",
+      "price": 1929.66,
+      "volume": 17200,
+      "trading_money": 33190152,
+      "close": 1890.0,
+      "premium_discount": 0.021
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2382",
+      "trade_type": "配對交易",
+      "price": 378.71,
+      "volume": 71370,
+      "trading_money": 27028533,
+      "close": 378.0,
+      "premium_discount": 0.0019
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2382",
+      "trade_type": "配對交易",
+      "price": 378.63,
+      "volume": 69120,
+      "trading_money": 26170906,
+      "close": 378.0,
+      "premium_discount": 0.0017
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2330",
+      "trade_type": "配對交易",
+      "price": 2482.57,
+      "volume": 10000,
+      "trading_money": 24825700,
+      "close": 2440.0,
+      "premium_discount": 0.0174
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "1590",
+      "trade_type": "配對交易",
+      "price": 1297.5,
+      "volume": 16000,
+      "trading_money": 20760000,
+      "close": 1320.0,
+      "premium_discount": -0.017
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "5347",
+      "trade_type": "配對交易",
+      "price": 178.75,
+      "volume": 112000,
+      "trading_money": 20020000,
+      "close": 178.5,
+      "premium_discount": 0.0014
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "3533",
+      "trade_type": "配對交易",
+      "price": 1987.5,
+      "volume": 10000,
+      "trading_money": 19875000,
+      "close": 1980.0,
+      "premium_discount": 0.0038
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "1603",
+      "trade_type": "配對交易",
+      "price": 35.1,
+      "volume": 552000,
+      "trading_money": 19375200,
+      "close": 31.85,
+      "premium_discount": 0.102
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2330",
+      "trade_type": "配對交易",
+      "price": 2462.41,
+      "volume": 7000,
+      "trading_money": 17236870,
+      "close": 2440.0,
+      "premium_discount": 0.0092
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2885",
+      "trade_type": "配對交易",
+      "price": 69.91,
+      "volume": 245000,
+      "trading_money": 17127950,
+      "close": 68.3,
+      "premium_discount": 0.0236
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "2330",
+      "trade_type": "配對交易",
+      "price": 2422.86,
+      "volume": 7000,
+      "trading_money": 16960020,
+      "close": 2440.0,
+      "premium_discount": -0.007
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "1603",
+      "trade_type": "配對交易",
+      "price": 35.15,
+      "volume": 432000,
+      "trading_money": 15184800,
+      "close": 31.85,
+      "premium_discount": 0.1036
+    },
+    {
+      "date": "2026-07-13",
+      "stock_id": "1109",
+      "trade_type": "配對交易",
+      "price": 16.02,
+      "volume": 511000,
+      "trading_money": 8186220,
+      "close": 14.65,
+      "premium_discount": 0.0935
     }
   ],
   "source": "FinMind"
