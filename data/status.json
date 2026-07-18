@@ -1,7 +1,7 @@
 {
   "phase": 2,
   "dataset": "TaiwanStockTradingDailyReport",
-  "generated_at": "2026-07-18T20:13:28.746631+00:00",
+  "generated_at": "2026-07-18T21:24:09.460798+00:00",
   "trading_days_target": 120,
   "trading_days_range": [
     "2026-01-15",
@@ -1027,7 +1027,7 @@
   "query_note": "非彙總報表以 (securities_trader_id, date) 查詢，逐筆精算。",
   "phase3_event_threshold": 5000000,
   "api_hourly_limit": 6000,
-  "api_used": 10,
+  "api_used": 0,
   "top_n": 50,
   "top_net_buy": [
     {
