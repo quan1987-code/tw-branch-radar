@@ -1,15 +1,8 @@
 {
   "phase": 5,
-  "generated_at": "2026-07-20T14:44:01.853285+00:00",
+  "generated_at": "2026-07-20T16:30:00.289646+00:00",
   "as_of": "2026-07-17",
-  "market_twse_fmtqik": {
-    "Date": "1150717",
-    "TradeVolume": "18244071063",
-    "TradeValue": "1333156652944",
-    "Transaction": "10258133",
-    "TAIEX": "42671.27",
-    "Change": "-2953.71"
-  },
+  "market_twse_fmtqik": null,
   "watchlist": [
     "2330",
     "2317",
