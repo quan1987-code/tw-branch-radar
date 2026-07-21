@@ -1,11 +1,11 @@
 {
   "phase": 2,
   "dataset": "TaiwanStockTradingDailyReport",
-  "generated_at": "2026-07-20T23:00:56.347199+00:00",
+  "generated_at": "2026-07-21T00:13:47.556119+00:00",
   "trading_days_target": 120,
   "trading_days_range": [
-    "2026-01-15",
-    "2026-07-17"
+    "2026-01-16",
+    "2026-07-20"
   ],
   "branch_coverage": {
     "075T": 120,
@@ -1022,13 +1022,13 @@
   },
   "backfill_remaining_pairs": 0,
   "backfill_stopped_early": false,
-  "fetched_this_run": 0,
-  "total_rows": 77381221,
+  "fetched_this_run": 1011,
+  "total_rows": 77354558,
   "net_buy_formula": "Σ(buy×price) − Σ(sell×price)（逐筆精算，新台幣）",
   "query_note": "非彙總報表以 (securities_trader_id, date) 查詢，逐筆精算。",
   "phase3_event_threshold": 5000000,
   "api_hourly_limit": 6000,
-  "api_used": 0,
+  "api_used": 8,
   "top_n": 50,
   "top_net_buy": [
     {
@@ -1109,6 +1109,17 @@
       "sell_shares": 1493226
     },
     {
+      "date": "2026-07-20",
+      "securities_trader_id": "9800",
+      "securities_trader": "元大",
+      "stock_id": "2330",
+      "buy_amount": 15508500645.0,
+      "sell_amount": 4431005065.0,
+      "net_amount": 11077495580.0,
+      "buy_shares": 6662408,
+      "sell_shares": 1903425
+    },
+    {
       "date": "2026-06-23",
       "securities_trader_id": "9800",
       "securities_trader": "元大",
@@ -1151,6 +1162,17 @@
       "net_amount": 10156208530.0,
       "buy_shares": 7013148,
       "sell_shares": 1256262
+    },
+    {
+      "date": "2026-07-20",
+      "securities_trader_id": "1480",
+      "securities_trader": "美商高盛",
+      "stock_id": "2330",
+      "buy_amount": 10916325000.0,
+      "sell_amount": 856431335.0,
+      "net_amount": 10059893665.0,
+      "buy_shares": 4693000,
+      "sell_shares": 368330
     },
     {
       "date": "2026-04-08",
@@ -1558,28 +1580,6 @@
       "net_amount": 7183975535.0,
       "buy_shares": 2555354,
       "sell_shares": 1347970
-    },
-    {
-      "date": "2026-07-03",
-      "securities_trader_id": "1470",
-      "securities_trader": "台灣摩根",
-      "stock_id": "2308",
-      "buy_amount": 7729584440.0,
-      "sell_amount": 600585410.0,
-      "net_amount": 7128999030.0,
-      "buy_shares": 3778155,
-      "sell_shares": 302807
-    },
-    {
-      "date": "2026-06-25",
-      "securities_trader_id": "1480",
-      "securities_trader": "美商高盛",
-      "stock_id": "2330",
-      "buy_amount": 8834143585.0,
-      "sell_amount": 1713384470.0,
-      "net_amount": 7120759115.0,
-      "buy_shares": 3673576,
-      "sell_shares": 712867
     }
   ],
   "source": "FinMind"
