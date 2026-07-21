@@ -1,7 +1,7 @@
 {
   "phase": 2,
   "dataset": "TaiwanStockTradingDailyReport",
-  "generated_at": "2026-07-21T00:13:47.556119+00:00",
+  "generated_at": "2026-07-21T03:56:58.375559+00:00",
   "trading_days_target": 120,
   "trading_days_range": [
     "2026-01-16",
@@ -1022,13 +1022,13 @@
   },
   "backfill_remaining_pairs": 0,
   "backfill_stopped_early": false,
-  "fetched_this_run": 1011,
+  "fetched_this_run": 0,
   "total_rows": 77354558,
   "net_buy_formula": "Σ(buy×price) − Σ(sell×price)（逐筆精算，新台幣）",
   "query_note": "非彙總報表以 (securities_trader_id, date) 查詢，逐筆精算。",
   "phase3_event_threshold": 5000000,
   "api_hourly_limit": 6000,
-  "api_used": 8,
+  "api_used": 0,
   "top_n": 50,
   "top_net_buy": [
     {
