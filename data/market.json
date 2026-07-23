@@ -1,14 +1,14 @@
 {
   "phase": 5,
-  "generated_at": "2026-07-23T21:17:59.884996+00:00",
+  "generated_at": "2026-07-23T22:09:54.299290+00:00",
   "as_of": "2026-07-22",
   "market_twse_fmtqik": {
-    "Date": "1150722",
-    "TradeVolume": "11296458003",
-    "TradeValue": "1025958396323",
-    "Transaction": "4491600",
-    "TAIEX": "44825.78",
-    "Change": "592.91"
+    "Date": "1150723",
+    "TradeVolume": "9701104103",
+    "TradeValue": "930612067733",
+    "Transaction": "4264682",
+    "TAIEX": "44850.81",
+    "Change": "25.03"
   },
   "watchlist": [
     "2330",
@@ -19,6 +19,84 @@
     "3008",
     "2891"
   ],
-  "quotes": [],
+  "quotes": [
+    {
+      "stock_id": "2330",
+      "date": "2026-07-22",
+      "open": 2440.0,
+      "max": 2445.0,
+      "min": 2385.0,
+      "close": 2400.0,
+      "spread": -10.0,
+      "trading_volume": 31653123,
+      "trading_money": 76206482625
+    },
+    {
+      "stock_id": "2317",
+      "date": "2026-07-22",
+      "open": 249.0,
+      "max": 259.0,
+      "min": 248.0,
+      "close": 251.5,
+      "spread": 5.5,
+      "trading_volume": 67787081,
+      "trading_money": 17204588878
+    },
+    {
+      "stock_id": "2454",
+      "date": "2026-07-22",
+      "open": 4000.0,
+      "max": 4000.0,
+      "min": 3830.0,
+      "close": 3850.0,
+      "spread": 180.0,
+      "trading_volume": 13766807,
+      "trading_money": 53781999095
+    },
+    {
+      "stock_id": "2303",
+      "date": "2026-07-22",
+      "open": 140.5,
+      "max": 145.0,
+      "min": 137.5,
+      "close": 139.0,
+      "spread": 4.5,
+      "trading_volume": 176785970,
+      "trading_money": 24993034013
+    },
+    {
+      "stock_id": "2603",
+      "date": "2026-07-22",
+      "open": 204.0,
+      "max": 208.5,
+      "min": 204.0,
+      "close": 206.0,
+      "spread": 3.0,
+      "trading_volume": 11781418,
+      "trading_money": 2440773351
+    },
+    {
+      "stock_id": "3008",
+      "date": "2026-07-22",
+      "open": 4050.0,
+      "max": 4140.0,
+      "min": 3955.0,
+      "close": 4000.0,
+      "spread": 15.0,
+      "trading_volume": 2234509,
+      "trading_money": 9061662155
+    },
+    {
+      "stock_id": "2891",
+      "date": "2026-07-22",
+      "open": 62.9,
+      "max": 64.3,
+      "min": 62.9,
+      "close": 64.0,
+      "spread": 1.3,
+      "trading_volume": 35795208,
+      "trading_money": 2285881653
+    }
+  ],
   "source": "FinMind + TWSE"
 }
