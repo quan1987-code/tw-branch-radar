@@ -1,11 +1,11 @@
 {
   "phase": 2,
   "dataset": "TaiwanStockTradingDailyReport",
-  "generated_at": "2026-07-23T23:29:06.655060+00:00",
+  "generated_at": "2026-07-24T04:25:23.191041+00:00",
   "trading_days_target": 120,
   "trading_days_range": [
-    "2026-01-20",
-    "2026-07-22"
+    "2026-01-21",
+    "2026-07-23"
   ],
   "branch_coverage": {
     "075T": 120,
@@ -1022,8 +1022,8 @@
   },
   "backfill_remaining_pairs": 0,
   "backfill_stopped_early": false,
-  "fetched_this_run": 0,
-  "total_rows": 77104803,
+  "fetched_this_run": 1011,
+  "total_rows": 76995812,
   "net_buy_formula": "Σ(buy×price) − Σ(sell×price)（逐筆精算，新台幣）",
   "query_note": "非彙總報表以 (securities_trader_id, date) 查詢，逐筆精算。",
   "phase3_event_threshold": 5000000,
@@ -1131,6 +1131,17 @@
       "sell_shares": 2104858
     },
     {
+      "date": "2026-07-23",
+      "securities_trader_id": "9100",
+      "securities_trader": "群益",
+      "stock_id": "2330",
+      "buy_amount": 11379815415.0,
+      "sell_amount": 786603400.0,
+      "net_amount": 10593212015.0,
+      "buy_shares": 4761026,
+      "sell_shares": 331067
+    },
+    {
       "date": "2026-06-18",
       "securities_trader_id": "8960",
       "securities_trader": "上海匯豐",
@@ -1151,17 +1162,6 @@
       "net_amount": 10185227500.0,
       "buy_shares": 33905000,
       "sell_shares": 2915000
-    },
-    {
-      "date": "2026-01-20",
-      "securities_trader_id": "1480",
-      "securities_trader": "美商高盛",
-      "stock_id": "2330",
-      "buy_amount": 12368216960.0,
-      "sell_amount": 2212008430.0,
-      "net_amount": 10156208530.0,
-      "buy_shares": 7013148,
-      "sell_shares": 1256262
     },
     {
       "date": "2026-07-20",
