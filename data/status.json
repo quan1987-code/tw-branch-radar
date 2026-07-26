@@ -1,7 +1,7 @@
 {
   "phase": 2,
   "dataset": "TaiwanStockTradingDailyReport",
-  "generated_at": "2026-07-26T06:04:27.878324+00:00",
+  "generated_at": "2026-07-26T08:57:59.050509+00:00",
   "trading_days_target": 120,
   "trading_days_range": [
     "2026-01-22",
