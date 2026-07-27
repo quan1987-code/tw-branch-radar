@@ -1,6 +1,6 @@
 {
   "phase": 3,
-  "generated_at": "2026-07-27T21:40:13.483503+00:00",
+  "generated_at": "2026-07-27T23:02:00.692044+00:00",
   "params": {
     "lookback_days": 120,
     "event_min_amount": 5000000,
